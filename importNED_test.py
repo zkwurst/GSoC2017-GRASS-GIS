@@ -1,27 +1,26 @@
-# -*- coding: utf-8 -*-
+#%%file r.in.usgsned.py
+#!/usr/bin/env python
+
+#%module
+#% description: Download USGS NED data
+#% keyword: raster
+#% keyword: NED
+#%end
+
+# import grass.script as gscript
 
 import requests # pip install requests
 import sys
 import os
 import zipfile
 
-
 # Call "g.region -bg" to get computational region coords
 
 # Write g.region output to URL bbox input function
 
-singleURL = """http://viewer.nationalmap.gov/tnmaccess/api/products?
-datasets=National Elevation Dataset (NED) 1/3 arc-second&
-bbox=-78.74626600,35.67208711,-78.53147569,35.88217399&prodFormats=IMG"""
+singleURL = "https://viewer.nationalmap.gov/tnmaccess/api/products?datasets=National+Elevation+Dataset+(NED%29+1%2F3+arc-second&bbox=-78.74626600%2C35.67208711%2C-78.53147569%2C35.88217399&prodFormats=IMG"
 
-multiURL = """http://viewer.nationalmap.gov/tnmaccess/api/products?
-datasets=National Elevation Dataset (NED) 1/3 arc-second&
-bbox=-79.12944451,35.29814813,-78.13398155,36.27185184&prodFormats=IMG"""
-
-"""
-Something strange going on with http request. Seems like USGS server is
-shutting the request down without returning the appropriate error message.
-"""
+# multiURL = "http://viewer.nationalmap.gov/tnmaccess/api/products?datasets=National Elevation Dataset (NED) 1/3 arc-second&bbox=-79.12944451,35.29814813,-78.13398155,36.27185184&prodFormats=IMG"
 
 # Query TNM API for data availability
 try:
@@ -45,7 +44,7 @@ except requests.exceptions.Timeout:
 # Working dir may change running through GRASS
 # How to make OS independent parameter?
 zipName = dwnldURL.split('/')[-1]
-local_temp = "/home/Downloads/" + zipName
+local_temp = "/home/zechariah/Downloads/" + str(zipName)
 
 # Write ZIP archive to HD without writing entire request to memory
 with open(local_temp, "wb+") as tempZIP:
@@ -55,13 +54,17 @@ with open(local_temp, "wb+") as tempZIP:
 
 # Index into zip dir to retrieve and save IMG file
 # Could potentially do this while ZIP in memory or too large?
-with zipfile.ZipFile(local_temp) as read_ZIP:
+with zipfile.ZipFile(local_temp, "r") as read_ZIP:
     for f in read_ZIP.namelist():
-        imgName = zipName.split('.')[0] + ".img"
+        imgName = "img" + zipName.split('.')[0] + "_13.img"
         if f is imgName:
-            imgOut = "/home/Downloads/" + imgName
+            # How can I make this path relative?
+            imgOut = "/home/zechariah/Downloads/" + imgName
             read_ZIP.extract(f, imgOut)
-            
+        else:
+            print "\nUSGS NED File/s are not present.\n"
+            sys.exit(1)
+
 # Delete original ZIP archive
 os.remove(local_temp)
 
