@@ -131,24 +131,8 @@ def main():
     gui_region = options['region']
     gui_method = options['method']
     gui_r_flag = flags['r']
-    
-    print gui_product
-    print gui_resolution
-    print gui_format
-    print gui_output
-    print gui_region
-    print gui_method
-    print gui_r_flag
-    
-#    NED
-#    1/3 arc-second
-#    IMG
-#    composite_tile.img
-#    nearest
-#    False
 
-    print "\n************************\nNED Data Download Module\n\
-    ************************"
+    print "\n************************\nNED Data Download Module\n************************"
     
     # GUI dialogue to specify working DIR?
 
@@ -192,8 +176,6 @@ def main():
         
         min_bbox = [minx, miny]
         max_bbox = [maxx, maxy]
-        print "min_bbox = {0}".format(min_bbox)
-        print "max_bbox = {0}".format(max_bbox)
 
         min_nad83_coords = gscript.read_command('m.proj', coordinates=min_bbox,\
                                                 proj_in=wgs84_proj4, \
@@ -208,25 +190,17 @@ def main():
         max_list = max_nad83_coords.split(',')[:2]
         list_bbox = min_list + max_list
         str_bbox = ",".join((str(coord) for coord in list_bbox))
-    print str_bbox
 
     gui_prod_str = gui_product + " " + gui_resolution
     datasets = urllib.quote_plus(gui_prod_str)
     #bbox = urllib.quote_plus(str_bbox)
     prodFormats = urllib.quote_plus(gui_format)
     
-    print gui_prod_str
-    print datasets
-    #print bbox
-    print prodFormats
-    
     base_TNM = "https://viewer.nationalmap.gov/tnmaccess/api/products?"
     datasets_TNM = "datasets={0}".format(datasets)
     bbox_TNM = "&bbox={0}".format(str_bbox)
     prodFormats_TNM = "&prodFormats={0}".format(prodFormats)
     TNM_API_URL = base_TNM + datasets_TNM + bbox_TNM + prodFormats_TNM
-    
-    print TNM_API_URL
     
     # Query TNM API for data availability
     try:
@@ -282,75 +256,72 @@ def main():
 #    #work_DIR = current_gisdbase + '/' + current_location + '/' + new_usgs_mapset
 #    #print work_DIR
 #"""   
-#    LT_count = 0
-#    LT_fullpaths = []
-#    LT_basenames = []
-#    
-#    try:
-#        for url in dwnld_URL:
-#            dwnldREQ = requests.get(url, timeout=12, stream=True)
-#            zipName = url.split('/')[-1]
-#            local_temp = work_DIR + '/' + zipName
-#            imgName = "img" + zipName.split('.')[0] + "_13.img"
-#            LT_base = imgName.split('.')[0]
-#            # Write ZIP archive to HD without writing entire request to memory
-#            with open(local_temp, "wb+") as tempZIP:
-#                for chunk in dwnldREQ.iter_content(chunk_size=1024):
-#                    if chunk:
-#                        tempZIP.write(chunk)
-#            # Index into zip dir to retrieve and save IMG file
-#            # Could potentially do this while ZIP in memory or too large?
-#            with zipfile.ZipFile(local_temp, "r") as read_ZIP:
-#                for f in read_ZIP.namelist():
-#                    if str(f) == imgName:
-#                        read_ZIP.extract(f, work_DIR) 
-#            # Delete original ZIP archive
-#            os.remove(local_temp)
-#            LT_path = work_DIR + '/' + imgName
-#            if os.path.exists(LT_path):
-#                LT_count += 1
-#                # not sure if r.patch can take full path or not
-#                # inserted os.chdir above to test 
-#                LT_fullpaths.append(imgName)
-#                LT_basenames.append(LT_base)
-#                print "Tile {0} of {1}: '{2}' downloaded to '{3}'".format(\
-#                        LT_count, tile_APIcount, imgName, work_DIR)
-#            else:
-#                print "Download Unsuccesful."
-#                sys.exit(1)
-#    except requests.exceptions.Timeout:
-#        print "\nUSGS download request has timed out.\n"
-#        sys.exit(1)
-#        
-#    if LT_count == tile_APIcount:
-#        print "\n{0} of {1} tiles succesfully downloaded.".format(LT_count,\
-#               tile_APIcount)
-#    
-#    print "\n**************************\nNED Data Downloaded\n\
-#    **************************\n"
-#    
-#    print "\nPatching NED Tiles to current g.region boundary."
-#    
-#    if LT_count == 1:
-#        gscript.run_command('r.import', input = LT_fullpaths, \
-#                            output = LT_basenames, overwrite=True)
-#    if LT_count > 1:
-#        for r in LT_fullpaths:
-#            LT_file_name = r.split('/')[-1]
-#            LT_layer_name = LT_file_name.split('.')[0]
-#            # Defined earlier in script
-#            # LT_basenames.append(LT_layer_name)
-#            gscript.run_command('r.import', input = r,  \
-#                                output = LT_layer_name, overwrite=True)
-#        gscript.run_command('r.patch', input=LT_basenames, \
-#                            output='test_combo_patch.img', overwrite=True)
-#        print "\nImporting Patched Tile to GRASS GIS."
-#    else:
-#        print "Import Error. Number of input tiles is 0."
-#        sys.exit(1)
-#    
-#    print "\n****************************\nr.in.usgsned Module Complete\n\
-#    ****************************\n"
+    LT_count = 0
+    LT_fullpaths = []
+    LT_basenames = []
+    # Hardcoded until GRASS GUI option implemented
+    work_DIR = "/home/zechariah/Downloads/r.in.usgsned_download"
+    
+    try:
+        for url in dwnld_URL:
+            dwnldREQ = requests.get(url, timeout=12, stream=True)
+            zipName = url.split('/')[-1]
+            local_temp = work_DIR + '/' + zipName
+            imgName = "img" + zipName.split('.')[0] + "_13.img"
+            LT_base = imgName.split('.')[0]
+            # Write ZIP archive to HD without writing entire request to memory
+            with open(local_temp, "wb+") as tempZIP:
+                for chunk in dwnldREQ.iter_content(chunk_size=1024):
+                    if chunk:
+                        tempZIP.write(chunk)
+            # Index into zip dir to retrieve and save IMG file
+            # Could potentially do this while ZIP in memory or too large?
+            with zipfile.ZipFile(local_temp, "r") as read_ZIP:
+                for f in read_ZIP.namelist():
+                    if str(f) == imgName:
+                        read_ZIP.extract(f, work_DIR) 
+            # Delete original ZIP archive
+            os.remove(local_temp)
+            LT_path = work_DIR + '/' + imgName
+            if os.path.exists(LT_path):
+                LT_count += 1
+                # not sure if r.patch can take full path or not
+                # inserted os.chdir above to test 
+                LT_fullpaths.append(LT_path)
+                LT_basenames.append(LT_base)
+                print "Tile {0} of {1}: '{2}' downloaded to '{3}'".format(\
+                        LT_count, tile_APIcount, imgName, work_DIR)
+            else:
+                print "Download Unsuccesful."
+                sys.exit(1)
+    except requests.exceptions.Timeout:
+        print "\nUSGS download request has timed out.\n"
+        sys.exit(1)
+        
+    if LT_count == tile_APIcount:
+        print "\n{0} of {1} tiles succesfully downloaded.".format(LT_count,\
+               tile_APIcount)
+    
+    print "\n**************************\nNED Data Downloaded\n**************************\n"
+    
+    if LT_count == 1:
+        gscript.run_command('r.import', input = LT_fullpaths, \
+                            output = LT_basenames, overwrite=True, \
+                            verbose=True)
+    if LT_count > 1:
+        print "\nPatching composite NED imagery to g.region boundary."
+        for r in LT_fullpaths:
+            LT_file_name = r.split('/')[-1]
+            LT_layer_name = LT_file_name.split('.')[0]
+            # Defined earlier in script
+            # LT_basenames.append(LT_layer_name)
+            gscript.run_command('r.import', input = r,  \
+                                output = LT_layer_name, overwrite=True)
+        gscript.run_command('r.patch', input=LT_basenames, \
+                            output='test_combo_patch.img', overwrite=True)
+        print "\nImporting Patched Tile to GRASS GIS."
+    
+    print "\n****************************\nr.in.usgsned Module Complete\n****************************\n"
 
 if __name__ == "__main__":
     options, flags = gscript.parser()
