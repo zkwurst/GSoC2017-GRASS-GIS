@@ -45,12 +45,6 @@
 #% guisection: USGS Data Selection
 #%end
 
-#%flag
-#% key: d
-#% label: Download available USGS data
-#% guisection: USGS Data Selection
-#%end
-
 #%option
 #% key: product
 #% required: yes
@@ -117,6 +111,8 @@ import os
 import zipfile
 import grass.script as gscript
 import urllib
+import urllib2
+import json
 
 def main():
     # Set GRASS GUI options and flags to python variables
@@ -127,35 +123,30 @@ def main():
     gui_region = options['region']
     gui_resampling_method = options['resampling_method']
     gui_i_flag = flags['i']
-    gui_d_flag = flags['d']
     gui_r_flag = flags['r']
     
     # Data dictionary for NED parameters
-    USGS_product_dict = [{"product": 
-            {"NED": 
+    USGS_product_dict = {
+            "NED": 
                 {"title": "National Elevation Dataset (NED)", 
                  "format": "IMG", 
                  # Need to work on dynamic 'file_string' formatting
                  # Currently hardcoded for NED format around line 237
-                 "file_string": "'img{0}_13.img'",
                  "resolution": {"1 arc-second": "1 x 1 degree", 
                                 "1/3 arc-second": "1 x 1 degree", 
                                 "1/9 arc-second": "15 x 15 minute"
                                 },
-                 "srs": "nad83",
+                 "srs": "wgs84",
                  "srs_proj4": "+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs"
-                 }}}]
+                 }}
     
     # Dynamic variables called from USGS data dict
-    nav_string = USGS_product_dict[0]["product"][gui_product]
+    nav_string = USGS_product_dict[gui_product]
     product_title = nav_string["title"]
     product_format = nav_string["format"]
-    product_format_string = nav_string["file_string"]
     product_extents = nav_string["resolution"][gui_resolution]
     product_srs = nav_string["srs"]
     product_proj4 = nav_string["srs_proj4"]
-
-    print "\n************************\nNED Data Download Module\n************************"
     
     # Get coordinates for current GRASS computational region and convert to USGS SRS
     gregion = gscript.region()
@@ -182,113 +173,166 @@ def main():
     prodFormats_TNM = "&prodFormats={0}".format(prodFormat)
     TNM_API_URL = base_TNM + datasets_TNM + bbox_TNM + prodFormats_TNM
 
-    # Query TNM API for data availability
+    # Converting to urllib2 will lose this built-in JSON parsing
     try:
-        # Converting to urllib2 will lose this built-in JSON parsing
-        TNM_API_GET = requests.get(TNM_API_URL, timeout=12)
-        returnJSON = TNM_API_GET.json()
+        # Query TNM API
+        TNM_API_GET = urllib2.urlopen(TNM_API_URL)
+        returnJSON = json.load(TNM_API_GET)
         # Parse JSON to return download URL
         tile_APIcount = int(returnJSON['total'])
         dwnld_size = []
         dwnld_URL = []
         dataset_name = []
+        tile_titles = []
         if tile_APIcount > 0:
             for tile in returnJSON['items']:
                 dwnld_size.append(int(tile['sizeInBytes']))
                 dwnld_URL.append(str(tile['downloadURL']))
+                tile_titles.append(tile['title'])
                 if tile['datasets'][0] not in dataset_name:
                     if len(dataset_name) <= 1:
                         dataset_name.append(str(tile['datasets'][0]))
                     else:
-                        print "Incompatible datasets detected."
+                        gscript.fatal("Error. Multiple USGS datasets returned.")
                         sys.exit(1)
         if tile_APIcount == 0:
-            print "Zero tiles returned. Please check input parameters."
+            gscript.fatal("Zero tiles returned. Please check input parameters.")
             sys.exit(1)
-        print "\nDataset:\t{0}".format(dataset_name)
-        print "# of tiles:\t{0}".format(str(tile_APIcount))
         total_size = sum(dwnld_size)
         if 6 < len(str(total_size)) < 10:
-            print "Download Size:\t{0} MB".format(total_size * 1e-6)
+            total_size_float = total_size * 1e-6
+            total_size_str = str("{0:.2f}".format(total_size_float) + " MB")
         if len(str(total_size)) >= 10:
-            print "Download Size:\t{0} GB".format(total_size * 1e-9)
+            total_size_float = total_size * 1e-9
+            total_size_str = str("{0:.2f}".format(total_size_float) + " GB")
     except requests.exceptions.Timeout:
-        print ("\nUSGS API query has timed out. \nPlease try again.\n")
-        sys.exit(1)
+        gscript.fatal("\nUSGS API query has timed out. \nPlease try again.\n")
+    
+    if gui_r_flag:
+        r_flag = "Remove source tiles after download."
+    if not gui_r_flag:
+        r_flag = "Keep source tiles after download."
+    tile_titles_info = "\n".join(tile_titles)
+    
+    gproj_info = gscript.parse_command('g.proj', flags='g')
+    gproj_datum = gproj_info['datum']
+
+    # Formatted return for 'i' flag
+    data_info = (
+                "\n***************************\n"
+                 "r.in.usgs Information Query"
+                 "\n***************************\n"
+                 "USGS Data requested:\n\t"
+                 "Product:\t{0}\n\t"
+                 "Resolution:\t{1}\n"
+                 "Product Extents:\t{2}\n"
+                 "\nInput g.region Parameters:\n"
+                 "GRASS SRS:\t{3}\n"
+                 "Computational Region:\t{4}\n"
+                 "\nOutput environment:\n"
+                 "Output Directory:\t{5}\n"
+                 "Output Layer Name:\t{6}\n"
+                 "\nUSGS File/s to Download:\n"
+                 "Total Download Size:\t{7}\n"
+                 "Tile Count:\t{8}\n"
+                 "USGS SRS:\t{9}\n"
+                 "\nUSGS Tile Titles:\n{10}\n"
+                 "\nModule Options:\n"
+                 "Resampling:\t{11}\n"
+                 "'r' flag:\t{12}\n"
+                 "\n************************\n"
+                 "r.in.usgs Query Complete"
+                 "\n************************\n"
+                 ).format(gui_product,
+                          gui_resolution,
+                          product_extents,
+                          gproj_datum,
+                          gui_region,
+                          gui_output_dir,
+                          gui_output_layer,
+                          total_size_str,
+                          tile_APIcount,
+                          product_srs,
+                          tile_titles_info,
+                          gui_resampling_method,
+                          r_flag,
+                          )
+    gscript.info(data_info)
+    
     if gui_i_flag:
-        # print info to GRASS message
-        # print instructions to run again with "d" flag for download
-        sys.exit(1)
-    
-    # Download results from TNM API query
-    if gui_d_flag:
-        LT_count = 0
-        LT_fullpaths = []
-        LT_basenames = []
-        work_DIR = gui_output_dir
-        try:
-            for url in dwnld_URL:
-                dwnldREQ = requests.get(url, timeout=12, stream=True)
-                zipName = url.split('/')[-1]
-                local_temp = work_DIR + '/' + zipName
-                zipSplit = zipName.split('.')[0]
-                # This step needs to be refined/standardized. I'm not sure 
-                # if different datasets have different naming conventions 
-                # for their .img files or other file types.
-                # imgName = product_format_string.format(zipSplit)
-                imgName = "img" + zipSplit + "_13.img"
-                LT_base = imgName.split('.')[0]
-                # Write ZIP archive to HD without writing entire request to memory
-                with open(local_temp, "wb+") as tempZIP:
-                    for chunk in dwnldREQ.iter_content(chunk_size=1024):
-                        if chunk:
-                            tempZIP.write(chunk)
-                # Index into zip dir to retrieve and save IMG file
-                # vsizip.vsicurl gdal tools?
-                with zipfile.ZipFile(local_temp, "r") as read_ZIP:
-                    for f in read_ZIP.namelist():
-                        if str(f) == imgName:
-                            read_ZIP.extract(f, work_DIR) 
-                # Delete original ZIP archive
-                os.remove(local_temp)
-                LT_path = work_DIR + '/' + imgName
-                if os.path.exists(LT_path):
-                    LT_count += 1
-                    LT_fullpaths.append(LT_path)
-                    LT_basenames.append(LT_base)
-                    print "Tile {0} of {1}: '{2}' downloaded to '{3}'".format(\
-                            LT_count, tile_APIcount, imgName, work_DIR)
-                else:
-                    print "Download Unsuccesful."
-                    sys.exit(1)
-        except requests.exceptions.Timeout:
-            print "\nUSGS download request has timed out. Network or formatting error.\n"
-            sys.exit(1)
-        
-        # Check that downloaded files match expected count
-        if LT_count == tile_APIcount:
-            print "\n{0} of {1} tiles succesfully downloaded.".format(LT_count,\
-                   tile_APIcount)
-            print "\n************************************\nNED Data Download Complete\n************************************\n"
-        
-        # Import single file into GRASS
-        if LT_count == 1:
-            gscript.run_command('r.import', input = LT_fullpaths, \
-                                output = LT_basenames, overwrite=True, \
-                                verbose=True)
-        # Import and patch multiple tiles into GRASS
-        if LT_count > 1:
-            for r in LT_fullpaths:
-                LT_file_name = r.split('/')[-1]
-                LT_layer_name = LT_file_name.split('.')[0]
-                gscript.run_command('r.import', input = r,  \
-                                    output = LT_layer_name, \
-                                    extent="region")
-            gscript.run_command('r.patch', input=LT_basenames, \
-                                output=gui_output_layer)
-            print "\nPatched composite layer imported to GRASS GIS."
-    
-    print "\n****************************\nr.in.usgsned Module Complete\n****************************\n"
+        gscript.info("\nTo download data, remove 'i' flag, and rerun r.in.usgs.\n")
+        exit()
+
+#    # Download results from TNM API query
+#    if gui_d_flag:
+#        LT_count = 0
+#        LT_fullpaths = []
+#        LT_basenames = []
+#        work_DIR = gui_output_dir
+#        try:
+#            for url in dwnld_URL:
+#                dwnldREQ = requests.get(url, timeout=12, stream=True)
+#                zipName = url.split('/')[-1]
+#                local_temp = work_DIR + '/' + zipName
+#                zipSplit = zipName.split('.')[0]
+#                # This step needs to be refined/standardized. I'm not sure 
+#                # if different datasets have different naming conventions 
+#                # for their .img files or other file types.
+#                # imgName = product_format_string.format(zipSplit)
+#                imgName = "img" + zipSplit + "_13.img"
+#                LT_base = imgName.split('.')[0]
+#                # Write ZIP archive to HD without writing entire request to memory
+#                with open(local_temp, "wb+") as tempZIP:
+#                    for chunk in dwnldREQ.iter_content(chunk_size=1024):
+#                        if chunk:
+#                            tempZIP.write(chunk)
+#                # Index into zip dir to retrieve and save IMG file
+#                # vsizip.vsicurl gdal tools?
+#                with zipfile.ZipFile(local_temp, "r") as read_ZIP:
+#                    for f in read_ZIP.namelist():
+#                        if str(f) == imgName:
+#                            read_ZIP.extract(f, work_DIR) 
+#                # Delete original ZIP archive
+#                os.remove(local_temp)
+#                LT_path = os.path.join(work_DIR, imgName)
+#                if os.path.exists(LT_path):
+#                    LT_count += 1
+#                    LT_fullpaths.append(LT_path)
+#                    LT_basenames.append(LT_base)
+#                    print "Tile {0} of {1}: '{2}' downloaded to '{3}'".format(\
+#                            LT_count, tile_APIcount, imgName, work_DIR)
+#                else:
+#                    print "Download Unsuccesful."
+#                    sys.exit(1)
+#        except requests.exceptions.Timeout:
+#            print "\nUSGS download request has timed out. Network or formatting error.\n"
+#            sys.exit(1)
+#        
+#        # Check that downloaded files match expected count
+#        if LT_count == tile_APIcount:
+#            print "\n{0} of {1} tiles succesfully downloaded.".format(LT_count,\
+#                   tile_APIcount)
+#        
+#        # Import single file into GRASS
+#        if LT_count == 1:
+#            gscript.run_command('r.import', input = LT_fullpaths, \
+#                                output = LT_basenames, overwrite=True, \
+#                                verbose=True)
+#        # Import and patch multiple tiles into GRASS
+#        if LT_count > 1:
+#            for r in LT_fullpaths:
+#                LT_file_name = r.split('/')[-1]
+#                LT_layer_name = LT_file_name.split('.')[0]
+#                gscript.run_command('r.import', input = r,  \
+#                                    output = LT_layer_name, \
+#                                    extent="region")
+#            gscript.run_command('r.patch', input=LT_basenames, \
+#                                output=gui_output_layer)
+#            print "\nPatched composite layer imported to GRASS GIS."
+#        
+#        if gui_r_flag:
+#            for f in LT_fullpaths:
+#                os.remove(f)
 
 if __name__ == "__main__":
     options, flags = gscript.parser()
