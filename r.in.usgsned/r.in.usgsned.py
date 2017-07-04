@@ -268,6 +268,9 @@ def main():
     LT_basenames = []
     
     work_DIR = gui_output_dir
+
+    
+    
     
     try:
         # The following 'for' loop is duplicated in download section
@@ -275,14 +278,18 @@ def main():
             zipName = url.split('/')[-1]
             zipSplit = zipName.split('.')[0]
             local_temp = os.path.join(work_DIR, zipName)
-#            # <2013 naming convention
-#            if "USGS_NED_" not in zipName:
-#                zip_sub_split = zipSplit.split('_')[0]
-#                imgName = zip_sub_split.replace('img','') + ".img"
-#            # >2013 naming convention
-#            if "USGS_NED" in zipName:
-#                imgName = zipSplit.split('_')[3] + ".img"
-#            LT_base = imgName.split('.')[0]
+            # <2013 naming convention
+            if "USGS_NED_" not in zipName:
+                zip_sub_split = zipSplit.split('_')[0]
+                imgName = zip_sub_split.replace('img','') + ".img"
+            # >2013 naming convention
+            if "USGS_NED" in zipName:
+                imgName = zipSplit.split('_')[3] + ".img"
+            LT_rename = os.path.join(work_DIR, imgName)
+            
+#            if os.path.isfile(LT_rename):
+#                if os.stat(LT_rename).st_size <
+            
             
             dwnldREQ = urllib2.urlopen(url, timeout=12)
             # Writes ZIP archive to HD without writing entire request to memory
@@ -296,20 +303,21 @@ def main():
             tempZIP.close()
             with zipfile.ZipFile(local_temp, "r") as read_ZIP:
                 for f in read_ZIP.namelist():
-                    if ".img" in f:
+                    if f.endswith(".img"):
                         read_ZIP.extract(f, work_DIR)
-            LT_path = os.path.join(work_DIR, f)
-            # Delete original ZIP archive
-            os.remove(local_temp)
-            if os.path.exists(LT_path):
+                        LT_path = os.path.join(work_DIR, str(f))
+                        # Rename variable formatting to tile coords
+                        os.rename(LT_path, LT_rename)
+            if os.path.exists(LT_rename):
                 LT_count += 1
-                LT_fullpaths.append(LT_path)
-#                LT_basenames.append(LT_base)
+                LT_fullpaths.append(LT_rename)
                 temp_count = ("Tile {0} of {1}: '{2}' downloaded to '{3}'").format(
-                        LT_count, tile_APIcount, f, work_DIR)
+                        LT_count, tile_APIcount, imgName, work_DIR)
                 gscript.info(temp_count)
             else:
                 gscript.fatal("\nDownload Unsuccesful.")
+            # Delete original ZIP archive
+            os.remove(local_temp)
     except urllib2.URLError:
         gscript.fatal("\nUSGS download request has timed out. Network or formatting error.")
     
@@ -320,32 +328,26 @@ def main():
         gscript.info(temp_down_count)
     else:
         gscript.fatal("Error downloading files. Please retry.")
-    # Import single file into GRASS
-    if LT_count == 1:
-        in_info = ("\nImporting and reprojecting {0}...\n").format(f)
+
+    # Import and patch tiles into GRASS
+    patch_names = []
+    for r in LT_fullpaths:
+        LT_file_name = r.split('/')[-1]
+        LT_layer_name = LT_file_name.split('.')[0]
+        patch_names.append(LT_layer_name)
+        in_info = ("\nImporting and reprojecting {0}...\n").format(LT_file_name)
         gscript.info(in_info)
-        gscript.run_command('r.import', input = LT_fullpaths, \
-                            output = LT_basenames, overwrite=True, \
-                            verbose=True)
-        gscript.info("\nImport to GRASS GIS complete.")
-    # Import and patch multiple tiles into GRASS
-    if LT_count > 1:
-        patch_names = []
-        for r in LT_fullpaths:
-            LT_file_name = r.split('/')[-1]
-            LT_layer_name = LT_file_name.split('.')[0]
-            LT_layer_name.append(patch_names)
-            in_info = ("\nImporting and reprojecting {0}...\n").format(LT_file_name)
-            gscript.info(in_info)
-            gscript.run_command('r.import', input = r,  \
-                                output = LT_layer_name, \
+        gscript.run_command('r.import', input=r,  \
+                                output=LT_layer_name, \
                                 extent="region")
+    gscript.info("\nImport to GRASS GIS complete.\n")
+    if LT_count > 1:
         gscript.run_command('r.patch', input=patch_names, \
                             output=gui_output_layer)
         # Need to catch/understand an Error 4 message
         out_info = ("\nPatched composite layer {0} imported to GRASS GIS.").format(gui_output_layer)
         gscript.info(out_info)
-    
+
     # Remove source files if 'r' flag active
     if gui_r_flag:
         for f in LT_fullpaths:
