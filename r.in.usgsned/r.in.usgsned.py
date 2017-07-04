@@ -170,7 +170,7 @@ def main():
     bbox_TNM = "&bbox={0}".format(str_bbox)
     prodFormats_TNM = "&prodFormats={0}".format(prodFormat)
     TNM_API_URL = base_TNM + datasets_TNM + bbox_TNM + prodFormats_TNM
-
+    
     # Converting to urllib2 will lose this built-in JSON parsing
     try:
         # Query TNM API
@@ -211,7 +211,7 @@ def main():
     
     gproj_info = gscript.parse_command('g.proj', flags='g')
     gproj_datum = gproj_info['datum']
-
+    
     # Formatted return for 'i' flag
     data_info = (
                 "\n***************************\n"
@@ -252,7 +252,7 @@ def main():
                           tile_titles_info,
                           gui_resampling_method,
                           r_flag,
-                          str_bbox
+                          str_bbox,
                           )
     gscript.info(data_info)
     
@@ -262,47 +262,51 @@ def main():
     
     gscript.message("\nDownloading USGS Data...")
     # If not 'i' flag, download files
+    
     LT_count = 0
     LT_fullpaths = []
     LT_basenames = []
+    
     work_DIR = gui_output_dir
+    
     try:
+        # The following 'for' loop is duplicated in download section
         for url in dwnld_URL:
-            dwnldREQ = urllib2.urlopen(url, timeout=12)
             zipName = url.split('/')[-1]
-            local_temp = work_DIR + '/' + zipName
             zipSplit = zipName.split('.')[0]
-            # This step needs to be refined/standardized. I'm not sure 
-            # if different datasets have different naming conventions 
-            # for their .img files or other file types.
-            # imgName = product_format_string.format(zipSplit)
-            imgName = "img" + zipSplit + "_13.img"
-            LT_base = imgName.split('.')[0]
+            local_temp = os.path.join(work_DIR, zipName)
+#            # <2013 naming convention
+#            if "USGS_NED_" not in zipName:
+#                zip_sub_split = zipSplit.split('_')[0]
+#                imgName = zip_sub_split.replace('img','') + ".img"
+#            # >2013 naming convention
+#            if "USGS_NED" in zipName:
+#                imgName = zipSplit.split('_')[3] + ".img"
+#            LT_base = imgName.split('.')[0]
+            
+            dwnldREQ = urllib2.urlopen(url, timeout=12)
             # Writes ZIP archive to HD without writing entire request to memory
-            if not os.path.isfile(local_temp):
-                CHUNK = 16 * 1024
-                with open(local_temp, "wb+") as tempZIP:
-                    while True:
-                        chunk = dwnldREQ.read(CHUNK)
-                        if not chunk:
-                            break
-                        tempZIP.write(chunk)        
-                tempZIP.close()
-            # Index into zip dir to retrieve and save IMG file
-            # vsizip.vsicurl gdal tools?
+            CHUNK = 16 * 1024
+            with open(local_temp, "wb+") as tempZIP:
+                while True:
+                    chunk = dwnldREQ.read(CHUNK)
+                    if not chunk:
+                        break
+                    tempZIP.write(chunk)        
+            tempZIP.close()
             with zipfile.ZipFile(local_temp, "r") as read_ZIP:
                 for f in read_ZIP.namelist():
-                    if str(f) == imgName:
+                    if ".img" in f:
                         read_ZIP.extract(f, work_DIR)
+            LT_path = os.path.join(work_DIR, f)
             # Delete original ZIP archive
             os.remove(local_temp)
-            LT_path = os.path.join(work_DIR, imgName)
             if os.path.exists(LT_path):
                 LT_count += 1
                 LT_fullpaths.append(LT_path)
-                LT_basenames.append(LT_base)
+#                LT_basenames.append(LT_base)
                 temp_count = ("Tile {0} of {1}: '{2}' downloaded to '{3}'").format(
-                        LT_count, tile_APIcount, imgName, work_DIR)
+                        LT_count, tile_APIcount, f, work_DIR)
                 gscript.info(temp_count)
             else:
                 gscript.fatal("\nDownload Unsuccesful.")
@@ -318,7 +322,7 @@ def main():
         gscript.fatal("Error downloading files. Please retry.")
     # Import single file into GRASS
     if LT_count == 1:
-        in_info = ("\nImporting and reprojecting {0}...\n").format(LT_base)
+        in_info = ("\nImporting and reprojecting {0}...\n").format(f)
         gscript.info(in_info)
         gscript.run_command('r.import', input = LT_fullpaths, \
                             output = LT_basenames, overwrite=True, \
@@ -326,15 +330,17 @@ def main():
         gscript.info("\nImport to GRASS GIS complete.")
     # Import and patch multiple tiles into GRASS
     if LT_count > 1:
+        patch_names = []
         for r in LT_fullpaths:
             LT_file_name = r.split('/')[-1]
             LT_layer_name = LT_file_name.split('.')[0]
+            LT_layer_name.append(patch_names)
             in_info = ("\nImporting and reprojecting {0}...\n").format(LT_file_name)
             gscript.info(in_info)
             gscript.run_command('r.import', input = r,  \
                                 output = LT_layer_name, \
                                 extent="region")
-        gscript.run_command('r.patch', input=LT_basenames, \
+        gscript.run_command('r.patch', input=patch_names, \
                             output=gui_output_layer)
         # Need to catch/understand an Error 4 message
         out_info = ("\nPatched composite layer {0} imported to GRASS GIS.").format(gui_output_layer)
