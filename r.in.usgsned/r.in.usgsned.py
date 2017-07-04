@@ -111,6 +111,7 @@ import grass.script as gscript
 import urllib
 import urllib2
 import json
+import osgeo.gdal
 
 def main():
     # Set GRASS GUI options and flags to python variables
@@ -171,7 +172,8 @@ def main():
     prodFormats_TNM = "&prodFormats={0}".format(prodFormat)
     TNM_API_URL = base_TNM + datasets_TNM + bbox_TNM + prodFormats_TNM
     
-    # Converting to urllib2 will lose this built-in JSON parsing
+    gscript.info("\nTNM API Query URL:\t{0}\n".format(TNM_API_URL))
+    
     try:
         # Query TNM API
         TNM_API_GET = urllib2.urlopen(TNM_API_URL, timeout=12)
@@ -191,7 +193,7 @@ def main():
                     if len(dataset_name) <= 1:
                         dataset_name.append(str(tile['datasets'][0]))
         if tile_APIcount == 0:
-            gscript.fatal("Zero tiles returned. Please check input parameters.")
+            gscript.fatal("Zero tiles available for given input parameters.")
         total_size = sum(dwnld_size)
         if 6 < len(str(total_size)) < 10:
             total_size_float = total_size * 1e-6
@@ -272,6 +274,8 @@ def main():
     
     
     
+    
+    
     try:
         # The following 'for' loop is duplicated in download section
         for url in dwnld_URL:
@@ -286,9 +290,16 @@ def main():
             if "USGS_NED" in zipName:
                 imgName = zipSplit.split('_')[3] + ".img"
             LT_rename = os.path.join(work_DIR, imgName)
+
+
+#            gdal.info("vsizip/vsicurl/{0}/{1}".format(url, img_path))
+
+
+
+
             
 #            if os.path.isfile(LT_rename):
-#                if os.stat(LT_rename).st_size <
+#                if os.path.getsize(LT_rename) <
             
             
             dwnldREQ = urllib2.urlopen(url, timeout=12)
@@ -345,7 +356,7 @@ def main():
         gscript.run_command('r.patch', input=patch_names, \
                             output=gui_output_layer)
         # Need to catch/understand an Error 4 message
-        out_info = ("\nPatched composite layer {0} imported to GRASS GIS.").format(gui_output_layer)
+        out_info = ("\nPatched composite layer '{0}' created and imported to GRASS GIS.").format(gui_output_layer)
         gscript.info(out_info)
 
     # Remove source files if 'r' flag active
