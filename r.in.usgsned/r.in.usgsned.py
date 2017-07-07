@@ -21,8 +21,6 @@
 #            
 #NOTES:      Needs:
 #            - Improved formatting, function defs, pep8, etc
-#            - GUI refinement
-#            - Error handling
 #            - Comments/html documentation
 #            - Code simplification
 #            - Develop further USGS formats
@@ -33,8 +31,6 @@
 #% keyword: NED
 #%end
 
-# Need to write rule that does not allow both "i" and "d" flags to be selected
-
 #%flag
 #% key: i
 #% label: Return USGS data information without downloading files
@@ -44,11 +40,11 @@
 #%option
 #% key: product
 #% required: yes
-#% options: NED, other (not supported)
-#% answer: NED
+#% options: ned, nlcd, ntd, small-scale
+#% answer: ned
 #% label: Select USGS Data Product
 #% description: Choose which available USGS datasets to query
-#% descriptions: NED;National Elevation Dataset
+#% descriptions: (ned;National Elevation Dataset,nlcd;National Land Cover Dataset)
 #% guisection: USGS Data Selection
 #%end
 
@@ -123,27 +119,44 @@ def main():
     gui_resampling_method = options['resampling_method']
     gui_i_flag = flags['i']
     gui_r_flag = flags['r']
+
+    dict_TNM_API_URL = "https://viewer.nationalmap.gov/tnmaccess/api/datasets?"
+    dict_TNM_API_GET = urllib2.urlopen(dict_TNM_API_URL, timeout=12)
+    dict_returnJSON = json.load(dict_TNM_API_GET)
     
-    # Data dictionary for NED parameters
-    USGS_product_dict = {
-            "NED": 
-                {"title": "National Elevation Dataset (NED)", 
-                 "format": "IMG", 
-                 # Need to work on dynamic 'file_string' formatting
-                 # Currently hardcoded for NED format in 'zipName' var and others
-                 "resolution": {"1 arc-second": "1 x 1 degree", 
-                                "1/3 arc-second": "1 x 1 degree", 
-                                "1/9 arc-second": "15 x 15 minute"
-                                },
-                 "srs": "wgs84",
-                 "srs_proj4": "+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs"
-                 }}
-    
+    # USGS Data dictionary
+    usgs_dict = {}
+    for product in dict_returnJSON:
+        prod_dataset = product["sbDatasetTag"]
+        prod_id = product["internalId"]
+        prod_tags = product['tags']
+        usgs_dict[prod_id] = {}
+        usgs_dict[prod_id]["product"] = {}
+        usgs_dict[prod_id] = {"product":prod_dataset}
+        usgs_dict[prod_id]["dataset"] = {}
+        for tag in prod_tags:
+            usgs_dict[prod_id]["dataset"][tag] = {}
+            prod_extents = prod_tags[tag]["extentsFormats"]
+            usgs_dict[prod_id]["dataset"][tag]["extents"] = {}
+            for prod_extent in prod_extents:
+                usgs_dict[prod_id]["dataset"][tag]["extents"][prod_extent] = {}
+                prod_formats = prod_tags[tag]["extentsFormats"][prod_extent]
+                usgs_dict[prod_id]["dataset"][tag]["extents"][prod_extent]["formats"] = []
+                usgs_dict[prod_id]["dataset"][tag]["extents"][prod_extent]["formats"] = [prod_formats]
+
+usgs_datasets = []
+for d in usgs_dict:
+    usgs_datasets.append(d)
+print usgs_datasets
+
+
+
+   
     # Dynamic variables called from USGS data dict
-    nav_string = USGS_product_dict[gui_product]
+    nav_string = usgs_dict[gui_product]
     product_title = nav_string["title"]
     product_format = nav_string["format"]
-    product_extents = nav_string["resolution"][gui_resolution]
+    product_extents = nav_string["dataset"][gui_resolution]
     product_srs = nav_string["srs"]
     product_proj4 = nav_string["srs_proj4"]
     
@@ -263,44 +276,20 @@ def main():
         exit()
     
     gscript.message("\nDownloading USGS Data...")
-    # If not 'i' flag, download files
     
     LT_count = 0
     LT_fullpaths = []
-    LT_basenames = []
-    
     work_DIR = gui_output_dir
 
-    
-    
-    
-    
-    
+    # If not 'i' flag, download files    
     try:
-        # The following 'for' loop is duplicated in download section
         for url in dwnld_URL:
-            zipName = url.split('/')[-1]
-            zipSplit = zipName.split('.')[0]
             local_temp = os.path.join(work_DIR, zipName)
-            # <2013 naming convention
-            if "USGS_NED_" not in zipName:
-                zip_sub_split = zipSplit.split('_')[0]
-                imgName = zip_sub_split.replace('img','') + ".img"
-            # >2013 naming convention
-            if "USGS_NED" in zipName:
-                imgName = zipSplit.split('_')[3] + ".img"
-            LT_rename = os.path.join(work_DIR, imgName)
-
 
 #            gdal.info("vsizip/vsicurl/{0}/{1}".format(url, img_path))
-
-
-
-
             
 #            if os.path.isfile(LT_rename):
 #                if os.path.getsize(LT_rename) <
-            
             
             dwnldREQ = urllib2.urlopen(url, timeout=12)
             # Writes ZIP archive to HD without writing entire request to memory
@@ -315,13 +304,12 @@ def main():
             with zipfile.ZipFile(local_temp, "r") as read_ZIP:
                 for f in read_ZIP.namelist():
                     if f.endswith(".img"):
+                        imgName = f
                         read_ZIP.extract(f, work_DIR)
                         LT_path = os.path.join(work_DIR, str(f))
-                        # Rename variable formatting to tile coords
-                        os.rename(LT_path, LT_rename)
-            if os.path.exists(LT_rename):
+            if os.path.exists(LT_path):
                 LT_count += 1
-                LT_fullpaths.append(LT_rename)
+                LT_fullpaths.append(LT_path)
                 temp_count = ("Tile {0} of {1}: '{2}' downloaded to '{3}'").format(
                         LT_count, tile_APIcount, imgName, work_DIR)
                 gscript.info(temp_count)
