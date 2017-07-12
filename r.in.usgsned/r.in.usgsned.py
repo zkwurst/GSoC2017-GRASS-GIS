@@ -180,7 +180,7 @@ def main():
         # Query TNM API
         TNM_API_GET = urllib2.urlopen(TNM_API_URL, timeout=12)
     except urllib2.URLError:
-        gscript.fatal("\nUSGS API query has timed out. \nPlease try again.\n")
+        gscript.fatal("\nUSGS TNM API query has timed out. Check network configuration.\nPlease try again.\n")
 
     try:
         # Parse return JSON object
@@ -189,44 +189,57 @@ def main():
         gscript.fatal("\nUnable to load USGS JSON object.")
 
     tile_API_count = int(return_JSON['total'])
-    dwnld_size = []
-    total_size = sum(dwnld_size)
-    dwnld_URL = []
-    dataset_name = []
-    tile_titles = []
     if tile_API_count > 0:
-        while True:
-            for tile in return_JSON['items']:
-                TNM_title = tile['title']
-                TNM_tile_URL = str(tile['downloadURL'])
-                TNM_tile_size = int(tile['sizeInBytes'])
-                TNM_zip_name = TNM_tile_URL.split('/')[-1]
-                pre_local_zip = os.path.join(work_dir, TNM_zip_name)
-                if not os.path.exists(pre_local_zip):
+        dwnld_size = []
+        dwnld_URL = []
+        dataset_name = []
+        tile_titles = []
+        zip_names = []
+        exist_zip_list = []
+        for tile in return_JSON['items']:
+            TNM_title = tile['title']
+            TNM_tile_URL = str(tile['downloadURL'])
+            TNM_tile_size = int(tile['sizeInBytes'])
+            TNM_zip_name = TNM_tile_URL.split('/')[-1]
+            pre_local_zip = os.path.join(work_dir, TNM_zip_name)
+            zip_exists = os.path.exists(pre_local_zip)
+            if zip_exists:
+                existing_LZ_size = os.path.getsize(pre_local_zip)
+                if existing_LZ_size != TNM_tile_size:
+                    cleanup_list.append(pre_local_zip)
+                else:
+                    exist_zip_list.append(pre_local_zip)
+                    cleanup_msg = "\n{0} existing ZIP archive/s will be used by module.\n".format(len(exist_zip_list))
+                    gscript.message(cleanup_msg)
                     dwnld_URL.append(TNM_tile_URL)
                     dwnld_size.append(TNM_tile_size)
                     tile_titles.append(TNM_title)
+                    zip_names.append(TNM_zip_name)
                     if tile['datasets'][0] not in dataset_name:
                         if len(dataset_name) <= 1:
                             dataset_name.append(str(tile['datasets'][0]))
-                else:
-                    existing_LZ_size = os.path.getsize(pre_local_zip)
-                    if existing_LZ_size != TNM_tile_size:
-                        cleanup_list.append(pre_local_zip)
-                        break
-            if cleanup_list:
-                cleanup_count = len(cleanup_list)
-                cleanup_error = "\n{0} incomplete existing local ZIP archive/s were removed. Module information includes replacement files.\n".format(cleanup_count)
-                gscript.warning(cleanup_error)
-                cleanup()
-                break
+            if not zip_exists:
+                dwnld_URL.append(TNM_tile_URL)
+                dwnld_size.append(TNM_tile_size)
+                tile_titles.append(TNM_title)
+                zip_names.append(TNM_zip_name)
+                if tile['datasets'][0] not in dataset_name:
+                    if len(dataset_name) <= 1:
+                        dataset_name.append(str(tile['datasets'][0]))
+        if cleanup_list:
+            cleanup_msg = "\n{0} existing incomplete ZIP archive/s detected and removed. Run module again.\n".format(len(cleanup_list))
+            gscript.fatal(cleanup_msg)
+
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
-            
-    if 6 < len(str(total_size)) < 10:
+
+    total_size = sum(dwnld_size)
+    len_total_size = len(str(total_size))
+
+    if 6 < len_total_size < 10:
         total_size_float = total_size * 1e-6
         total_size_str = str("{0:.2f}".format(total_size_float) + " MB")
-    if len(str(total_size)) >= 10:
+    if len_total_size >= 10:
         total_size_float = total_size * 1e-9
         total_size_str = str("{0:.2f}".format(total_size_float) + " GB")
 
@@ -285,7 +298,8 @@ def main():
 
     gscript.info(data_info)
     if gui_i_flag:
-        gscript.fatal("\nTo download USGS data, remove 'i' flag, and rerun r.in.usgs.\n")
+        gscript.message("\nTo download USGS data, remove 'i' flag, and rerun r.in.usgs.\n")
+        exit()
 
 
     # USGS data download process
@@ -326,7 +340,6 @@ def main():
                         LZ_count, TNM_count)
             gscript.message(zip_failed)
             continue
-    
 
     for z in LZ_paths:
         # Extract tiles from ZIP archives
