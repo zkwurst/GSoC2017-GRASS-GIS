@@ -10,20 +10,13 @@
 #
 #PURPOSE:    Download user-requested tiles from USGS NED database.
 #
+#VERSION:    [STABLE] r.in.usgsned
+#
 #COPYRIGHT:  (C) 2017 Zechariah Krautwurst and the GRASS Development Team
 #            
 #            This program is free software under the GNU General Public
 #            License (>=v2). Read the file COPYING that comes with GRASS
 #            for details.
-#            
-#VERSION:    Preliminary testing phase. Script imports NED IMG tiles for
-#            GRASS GIS locations by computational region coordinates.
-#            
-#NOTES:      Needs:
-#            - Improved formatting, function defs, pep8, etc
-#            - Comments/html documentation
-#            - Code simplification
-#            - Develop further USGS formats
 
 #%module
 #% description: Download USGS NED data
@@ -85,10 +78,10 @@
 #% type: string
 #% required: no
 #% multiple: no
-#% options: default,nearest,bilinear,bicubic,lanczos,bilinear_f,bicubic_f,lanczos_f
+#% options: GRASS default,nearest,bilinear,bicubic,lanczos,bilinear_f,bicubic_f,lanczos_f
 #% description: Resampling method to use
 #% descriptions: default;default method based on product;nearest;nearest neighbor;bilinear;bilinear interpolation;bicubic;bicubic interpolation;lanczos;lanczos filter;bilinear_f;bilinear interpolation with fallback;bicubic_f;bicubic interpolation with fallback;lanczos_f;lanczos filter with fallback
-#% answer: default
+#% answer: GRASS default
 #% guisection: Download Options
 #%end
 
@@ -139,6 +132,7 @@ def main():
                                 },
                  "srs": "wgs84",
                  "srs_proj4": "+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs"
+                 "interpolation": "bilinear"
                  }}
 
     # Dynamic variables called from USGS data dict
@@ -315,7 +309,6 @@ def main():
     for url in dwnld_URL:
         zip_name = url.split('/')[-1]
         local_zip = os.path.join(work_dir, zip_name)
-
         try:
             dwnld_req = urllib2.urlopen(url, timeout=12)
         except urllib2.URLError:
@@ -338,8 +331,7 @@ def main():
         except:
             zip_failed = "\nDownload {0} of {1}: FAILED".format(
                         LZ_count, TNM_count)
-            gscript.message(zip_failed)
-            continue
+            gscript.fatal(zip_failed)
 
     for z in LZ_paths:
         # Extract tiles from ZIP archives
@@ -366,7 +358,7 @@ def main():
         try:
             gscript.run_command('r.import', input=LT_file_name,
                                 output=LT_layer_name,
-                                extent="region")
+                                extent="region", resample=gui_resampling_method)
             in_complete = ("Computational region from '{0}' imported to GRASS GIS").format(img_name)
             gscript.info(in_complete)
             if not gui_k_flag:
