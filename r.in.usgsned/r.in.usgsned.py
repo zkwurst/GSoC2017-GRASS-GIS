@@ -125,9 +125,10 @@ def main():
                  "format": "IMG",
                  # Need to work on dynamic 'file_string' formatting
                  # Currently hardcoded for NED format in 'zipName' var and others
-                 "resolution": {"1 arc-second": 30,
-                                "1/3 arc-second": 10,
-                                "1/9 arc-second": 3
+                 # defined resolution in degrees, meters, and feet
+                 "resolution": {"1 arc-second": (1. / 3600, 30, 100),
+                                "1/3 arc-second": (1. / 3600 / 3, 10, 30),
+                                "1/9 arc-second": (1. / 3600 / 9, 3, 10)
                                 },
                  "srs": "wgs84",
                  "srs_proj4": "+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
@@ -141,6 +142,16 @@ def main():
     product_resolution = nav_string["resolution"][gui_resolution]
     product_SRS = nav_string["srs"]
     product_PROJ4 = nav_string["srs_proj4"]
+
+    # current units
+    proj = gscript.parse_command('g.proj', flags='g')
+    if gscript.locn_is_latlong:
+        product_resolution = product_resolution[0]
+    elif float(proj['meters']) == 1:
+        product_resolution = product_resolution[1]
+    else:
+        # we assume feet
+        product_resolution = product_resolution[2]
 
     if gui_resampling_method == 'default':
         gui_resampling_method = nav_string['interpolation']
@@ -345,13 +356,17 @@ def main():
 
     if LT_count > 1:
         try:
+            gscript.use_temp_region()
+            # set the resolution
+            gscript.run_command('g.region', res=product_resolution, flags='a')
             gscript.run_command('r.patch', input=patch_names,
                                 output=gui_output_layer)
+            gscript.del_temp_region()
             out_info = ("Patched composite layer '{0}' added").format(gui_output_layer)
             gscript.verbose(out_info)
-            gscript.run_command('g.remove', type='raster',
-                                name=patch_names,
-                                flags='f')
+            if not gui_k_flag:
+                gscript.run_command('g.remove', type='raster',
+                                    name=patch_names, flags='f')
         except CalledModuleError:
             gscript.fatal("Unable to patch tiles.")
     elif LT_count == 1:
