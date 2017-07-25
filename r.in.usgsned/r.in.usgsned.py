@@ -98,13 +98,7 @@ import atexit
 
 from grass.exceptions import CalledModuleError
 
-
 cleanup_list = []
-
-def cleanup():
-    for f in cleanup_list:
-        if os.path.exists(f):
-            os.remove(f)
 
 def main():
     # Set GRASS GUI options and flags to python variables
@@ -113,9 +107,10 @@ def main():
     gui_output_layer = options['output']
     gui_resampling_method = options['resampling_method']
     gui_i_flag = flags['i']
+    global gui_k_flag
     gui_k_flag = flags['k']
     work_dir = options['output_directory']
-
+    
     # Hard-coded data dictionary for NED parameters
     USGS_product_dict = {
             "ned":
@@ -203,13 +198,13 @@ def main():
                 dataset_name.append(str(tile['datasets'][0]))
 
     tile_API_count = int(return_JSON['total'])
+    size_diff_tolerance = 5
     if tile_API_count > 0:
         dwnld_size = []
         dwnld_URL = []
         dataset_name = []
         tile_titles = []
         exist_zip_list = []
-        exist_zip_count = len(exist_zip_list)
         for tile in return_JSON['items']:
             TNM_title = tile['title']
             TNM_tile_URL = str(tile['downloadURL'])
@@ -217,56 +212,67 @@ def main():
             TNM_zip_name = TNM_tile_URL.split('/')[-1]
             pre_local_zip = os.path.join(work_dir, TNM_zip_name)
             zip_exists = os.path.exists(pre_local_zip)
-            existing_LZ_size = os.path.getsize(pre_local_zip)
             if zip_exists:
-                if existing_LZ_size != TNM_tile_size:
+                existing_LZ_size = os.path.getsize(pre_local_zip)
+                if abs(existing_LZ_size - TNM_tile_size) > size_diff_tolerance:
                     cleanup_list.append(pre_local_zip)
                     down_list()
                 else:
                     exist_zip_list.append(pre_local_zip)
             else:
                 down_list()
+        exist_zip_count = len(exist_zip_list)
+        tile_download_count = tile_API_count - exist_zip_count
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
-        
-    tile_download_count = tile_API_count - exist_zip_count
-    if exist_zip_list:
-        exist_msg = "{0} ZIP archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
-        gscript.verbose(exist_msg)
-    if cleanup_list:
-        cleanup_msg = "{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
-        gscript.fatal(cleanup_msg)
 
-    total_size = sum(dwnld_size)
-    len_total_size = len(str(total_size))
-    if 6 < len_total_size < 10:
-        total_size_float = total_size * 1e-6
-        total_size_str = str("{0:.2f}".format(total_size_float) + " MB")
-    if len_total_size >= 10:
-        total_size_float = total_size * 1e-9
-        total_size_str = str("{0:.2f}".format(total_size_float) + " GB")
+    if exist_zip_list:
+        exist_msg = "\n{0} ZIP archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
+        gscript.message(exist_msg)
+    if cleanup_list:
+        cleanup_msg = "\n{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
+        gscript.fatal(cleanup_msg)
+    
+    if dwnld_size:
+        total_size = sum(dwnld_size)
+        len_total_size = len(str(total_size))
+        if 6 < len_total_size < 10:
+            total_size_float = total_size * 1e-6
+            total_size_str = str("{0:.2f}".format(total_size_float) + " MB")
+        if len_total_size >= 10:
+            total_size_float = total_size * 1e-9
+            total_size_str = str("{0:.2f}".format(total_size_float) + " GB")
+    else:
+        total_size_str = '0'
 
     # Variables created for info display
     if gui_k_flag:
         k_flag = "'k' flag set. KEEP source files after download."
     else:
         k_flag = "'k' flag NOT set. REMOVE source files after download."
-    tile_titles_info = "\n".join(tile_titles)
+    # Prints 'none' if all tiles available locally
+    if tile_titles:
+        tile_titles_info = "\n".join(tile_titles)
+    else:
+        tile_titles_info = 'none'
 
     # Formatted return for 'i' flag
-    data_info = (
-                 "USGS file(s) to download:",
-                 "-------------------------",
-                 "Total download size:\t{size}",
-                 "Tile count:\t{count}",
-                 "USGS SRS:\t{srs}",
-                 "USGS tile titles:\n{tile}",
-                 "-------------------------",
-                 )
-    data_info = '\n'.join(data_info).format(size=total_size_str,
-                                            count=tile_download_count,
-                                            srs=product_SRS,
-                                            tile=tile_titles_info)
+    if tile_download_count == 0:
+        data_info = "USGS file(s) to download: NONE"
+    else:
+        data_info = (
+                     "USGS file(s) to download:",
+                     "-------------------------",
+                     "Total download size:\t{size}",
+                     "Tile count:\t{count}",
+                     "USGS SRS:\t{srs}",
+                     "USGS tile titles:\n{tile}",
+                     "-------------------------",
+                     )
+        data_info = '\n'.join(data_info).format(size=total_size_str,
+                                                count=tile_download_count,
+                                                srs=product_SRS,
+                                                tile=tile_titles_info)
 
     if gui_i_flag:
         gscript.info(data_info)
@@ -276,10 +282,15 @@ def main():
         gscript.verbose(data_info)
 
     # USGS data download process
-    gscript.message("Downloading USGS Data...")
+    if tile_download_count == 0:
+        gscript.message("Extracting existing USGS Data...")
+    else:
+        gscript.message("Downloading USGS Data...")
+
     TNM_count = len(dwnld_URL)
     LZ_count = 0
     LT_count = 0
+    global LT_paths
     LT_paths = []
     LZ_paths = []
     patch_names = []
@@ -320,6 +331,11 @@ def main():
     if exist_zip_list:
         for z in exist_zip_list:
             LZ_paths.append(z)
+    
+    if tile_download_count == 0:
+        pass
+    else:
+        gscript.message("Extracting data...")
 
     for z in LZ_paths:
         # Extract tiles from ZIP archives
@@ -328,7 +344,10 @@ def main():
                 for f in read_zip.namelist():
                         if f.endswith(".img"):
                             local_tile = os.path.join(work_dir, str(f))
-                            read_zip.extract(f, work_dir)
+                            if os.path.exists(local_tile):
+                                os.remove(local_tile)
+                            else:
+                                read_zip.extract(f, work_dir)
             if os.path.exists(local_tile):
                 LT_count += 1
                 LT_paths.append(local_tile)
@@ -378,7 +397,7 @@ def main():
     else:
         gscript.fatal("Error downloading files. Please retry.")
 
-    # Remove source files if 'r' flag active
+    # Keep source files if 'k' flag active
     if gui_k_flag:
         src_msg = ("<k> flag selected: Source tiles remain in '{0}'").format(work_dir)
         gscript.info(src_msg)
@@ -387,6 +406,18 @@ def main():
     if gui_product == 'ned':
         gscript.run_command('r.colors', map=gui_output_layer, color='elevation')
 
+def cleanup():
+#    # Remove impartial or remaining .img files from download dir
+#    if not gui_k_flag:
+#        if LT_paths:
+#            for t in LT_paths:
+#                if os.path.exists(t):
+#                    cleanup_list.append(t)
+    # Remove files in cleanup_list
+    if cleanup_list:
+        for f in cleanup_list:
+            if os.path.exists(f):
+                os.remove(f)
 
 if __name__ == "__main__":
     options, flags = gscript.parser()
