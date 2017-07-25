@@ -101,12 +101,10 @@ from grass.exceptions import CalledModuleError
 
 cleanup_list = []
 
-
 def cleanup():
     for f in cleanup_list:
         if os.path.exists(f):
             os.remove(f)
-
 
 def main():
     # Set GRASS GUI options and flags to python variables
@@ -123,8 +121,6 @@ def main():
             "ned":
                 {"title": "National Elevation Dataset (NED)",
                  "format": "IMG",
-                 # Need to work on dynamic 'file_string' formatting
-                 # Currently hardcoded for NED format in 'zipName' var and others
                  # defined resolution in degrees, meters, and feet
                  "resolution": {"1 arc-second": (1. / 3600, 30, 100),
                                 "1/3 arc-second": (1. / 3600 / 3, 10, 30),
@@ -196,6 +192,15 @@ def main():
         return_JSON = json.load(TNM_API_GET)
     except:
         gscript.fatal("Unable to load USGS JSON object.")
+    
+    # adds zip properties to needed lists for download
+    def down_list():
+        dwnld_URL.append(TNM_tile_URL)
+        dwnld_size.append(TNM_tile_size)
+        tile_titles.append(TNM_title)
+        if tile['datasets'][0] not in dataset_name:
+            if len(dataset_name) <= 1:
+                dataset_name.append(str(tile['datasets'][0]))
 
     tile_API_count = int(return_JSON['total'])
     if tile_API_count > 0:
@@ -203,8 +208,8 @@ def main():
         dwnld_URL = []
         dataset_name = []
         tile_titles = []
-        zip_names = []
         exist_zip_list = []
+        exist_zip_count = len(exist_zip_list)
         for tile in return_JSON['items']:
             TNM_title = tile['title']
             TNM_tile_URL = str(tile['downloadURL'])
@@ -212,39 +217,28 @@ def main():
             TNM_zip_name = TNM_tile_URL.split('/')[-1]
             pre_local_zip = os.path.join(work_dir, TNM_zip_name)
             zip_exists = os.path.exists(pre_local_zip)
+            existing_LZ_size = os.path.getsize(pre_local_zip)
             if zip_exists:
-                existing_LZ_size = os.path.getsize(pre_local_zip)
                 if existing_LZ_size != TNM_tile_size:
                     cleanup_list.append(pre_local_zip)
+                    down_list()
                 else:
                     exist_zip_list.append(pre_local_zip)
-                    cleanup_msg = "{0} existing ZIP archive(s) will be used by module.".format(len(exist_zip_list))
-                    gscript.verbose(cleanup_msg)
-                    dwnld_URL.append(TNM_tile_URL)
-                    dwnld_size.append(TNM_tile_size)
-                    tile_titles.append(TNM_title)
-                    zip_names.append(TNM_zip_name)
-                    if tile['datasets'][0] not in dataset_name:
-                        if len(dataset_name) <= 1:
-                            dataset_name.append(str(tile['datasets'][0]))
-            if not zip_exists:
-                dwnld_URL.append(TNM_tile_URL)
-                dwnld_size.append(TNM_tile_size)
-                tile_titles.append(TNM_title)
-                zip_names.append(TNM_zip_name)
-                if tile['datasets'][0] not in dataset_name:
-                    if len(dataset_name) <= 1:
-                        dataset_name.append(str(tile['datasets'][0]))
-        if cleanup_list:
-            cleanup_msg = "{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
-            gscript.fatal(cleanup_msg)
-
+            else:
+                down_list()
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
+        
+    tile_download_count = tile_API_count - exist_zip_count
+    if exist_zip_list:
+        exist_msg = "{0} ZIP archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
+        gscript.verbose(exist_msg)
+    if cleanup_list:
+        cleanup_msg = "{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
+        gscript.fatal(cleanup_msg)
 
     total_size = sum(dwnld_size)
     len_total_size = len(str(total_size))
-
     if 6 < len_total_size < 10:
         total_size_float = total_size * 1e-6
         total_size_str = str("{0:.2f}".format(total_size_float) + " MB")
@@ -255,7 +249,7 @@ def main():
     # Variables created for info display
     if gui_k_flag:
         k_flag = "'k' flag set. KEEP source files after download."
-    if not gui_k_flag:
+    else:
         k_flag = "'k' flag NOT set. REMOVE source files after download."
     tile_titles_info = "\n".join(tile_titles)
 
@@ -270,7 +264,7 @@ def main():
                  "-------------------------",
                  )
     data_info = '\n'.join(data_info).format(size=total_size_str,
-                                            count=tile_API_count,
+                                            count=tile_download_count,
                                             srs=product_SRS,
                                             tile=tile_titles_info)
 
@@ -297,9 +291,6 @@ def main():
         try:
             dwnld_req = urllib2.urlopen(url, timeout=12)
             download_bytes = int(dwnld_req.info()['Content-Length'])
-        except urllib2.URLError:
-            gscript.fatal("USGS download request has timed out. Network or formatting error.")
-        try:
             CHUNK = 16 * 1024
             with open(local_zip, "wb+") as temp_zip:
                 count = 0
@@ -312,16 +303,23 @@ def main():
                         break
                     temp_zip.write(chunk)
             temp_zip.close()
-            if os.path.exists(local_zip):
-                LZ_count += 1
-                LZ_paths.append(local_zip)
-                zip_complete = "Download {0} of {1}: COMPLETE".format(
-                        LZ_count, TNM_count)
-                gscript.info(zip_complete)
+            LZ_count += 1
+            LZ_paths.append(local_zip)
+            zip_complete = "Download {0} of {1}: COMPLETE".format(
+                    LZ_count, TNM_count)
+            gscript.info(zip_complete)
+        except urllib2.URLError:
+            gscript.fatal("USGS download request has timed out. Network or formatting error.")
         except StandardError:
+            cleanup_list.append(local_zip)
             zip_failed = "Download {0} of {1}: FAILED".format(
                         LZ_count, TNM_count)
             gscript.fatal(zip_failed)
+
+    # adds already downloaded zip file paths 
+    if exist_zip_list:
+        for z in exist_zip_list:
+            LZ_paths.append(z)
 
     for z in LZ_paths:
         # Extract tiles from ZIP archives
