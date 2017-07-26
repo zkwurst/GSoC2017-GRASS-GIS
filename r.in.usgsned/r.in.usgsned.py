@@ -136,7 +136,7 @@ def main():
 
     # current units
     proj = gscript.parse_command('g.proj', flags='g')
-    if gscript.locn_is_latlong:
+    if gscript.locn_is_latlong():
         product_resolution = product_resolution[0]
     elif float(proj['meters']) == 1:
         product_resolution = product_resolution[1]
@@ -351,6 +351,7 @@ def main():
             if os.path.exists(local_tile):
                 LT_count += 1
                 LT_paths.append(local_tile)
+                cleanup_list.append(local_tile)
         except:
             cleanup_list.append(local_tile)
             gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
@@ -407,17 +408,11 @@ def main():
         gscript.run_command('r.colors', map=gui_output_layer, color='elevation')
 
 def cleanup():
-#    # Remove impartial or remaining .img files from download dir
-#    if not gui_k_flag:
-#        if LT_paths:
-#            for t in LT_paths:
-#                if os.path.exists(t):
-#                    cleanup_list.append(t)
     # Remove files in cleanup_list
-    if cleanup_list:
-        for f in cleanup_list:
-            if os.path.exists(f):
-                os.remove(f)
+    for f in cleanup_list:
+        if os.path.exists(f):
+            gscript.try_remove(f)
+
 
 if __name__ == "__main__":
     options, flags = gscript.parser()
