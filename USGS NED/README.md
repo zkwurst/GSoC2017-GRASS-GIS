@@ -1,1 +1,0 @@
-# GSoC2017-GRASS-GIS
