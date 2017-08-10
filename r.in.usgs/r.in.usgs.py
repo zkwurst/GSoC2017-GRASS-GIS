@@ -197,7 +197,7 @@ def main():
     product = nav_string['product']
     product_format = nav_string['format']
     product_extension = nav_string['extension']
-    product_zip = nav_string['zip']
+    product_is_zip = nav_string['zip']
     product_srs = nav_string['srs']
     product_proj4 = nav_string['srs_proj4']
     product_interpolation = nav_string['interpolation']
@@ -284,72 +284,86 @@ def main():
         return_JSON = json.load(TNM_API_GET)
     except:
         gscript.fatal("Unable to load USGS JSON object.")
-
+    
     # adds zip properties to needed lists for download
     def down_list():
-        dwnld_url.append(TNM_tile_URL)
-        dwnld_size.append(TNM_tile_size)
-        tile_titles.append(TNM_title)
-        if tile['datasets'][0] not in dataset_name:
+        dwnld_url.append(TNM_file_URL)
+        dwnld_size.append(TNM_file_size)
+        TNM_file_titles.append(TNM_file_title)
+        if product_is_zip:
+            extract_zip_list.append(local_zip_path)
+        if f['datasets'][0] not in dataset_name:
             if len(dataset_name) <= 1:
-                dataset_name.append(str(tile['datasets'][0]))
+                dataset_name.append(str(f['datasets'][0]))
+
+    # if files exists, execute these actions
+    def exist_list():
+        exist_TNM_titles.append(TNM_file_title)
+        exist_dwnld_url.append(TNM_file_URL)
+        if product_is_zip:
+            exist_zip_list.append(local_zip_path)
+            extract_zip_list.append(local_zip_path)
+        else:
+            exist_tile_list.append(local_tile_path)
 
     tile_API_count = int(return_JSON['total'])
+    tiles_needed_count = 0
     size_diff_tolerance = 5
     if tile_API_count > 0:
         dwnld_size = []
         dwnld_url = []
         dataset_name = []
-        tile_titles = []
+        TNM_file_titles = []
         exist_dwnld_size = 0
         exist_dwnld_url = []
-        exist_tile_titles = []
-        exist_file_list = []
-        for tile in return_JSON['items']:
-            TNM_title = tile['title']
-            TNM_tile_URL = str(tile['downloadURL'])
-            TNM_tile_size = int(tile['sizeInBytes'])
-            TNM_file_name = TNM_tile_URL.split(product_url_split)[-1]
-            pre_local_file = os.path.join(work_dir, TNM_file_name)
-            file_exists = os.path.exists(pre_local_file)
+        exist_TNM_titles = []
+        exist_zip_list = []
+        exist_tile_list = []
+        extract_zip_list = []
+        for f in return_JSON['items']:
+            TNM_file_title = f['title']
+            TNM_file_URL = str(f['downloadURL'])
+            TNM_file_size = int(f['sizeInBytes'])
+            TNM_file_name = TNM_file_URL.split(product_url_split)[-1]
+            local_file_path = os.path.join(work_dir, TNM_file_name)
+            local_zip_path = os.path.join(work_dir, TNM_file_name)
+            local_tile_path = os.path.join(work_dir, TNM_file_name)
+            file_exists = os.path.exists(local_file_path)
             if file_exists:
-                existing_LF_size = os.path.getsize(pre_local_file)
-                if abs(existing_LF_size - TNM_tile_size) > size_diff_tolerance:
-                    cleanup_list.append(pre_local_file)
+                existing_local_file_size = os.path.getsize(local_file_path)
+                if abs(existing_local_file_size - TNM_file_size) > size_diff_tolerance:
+                    cleanup_list.append(local_file_path)
                     down_list()
                 else:
-                    exist_file_list.append(pre_local_file)
-                    exist_tile_titles.append(TNM_title)
-                    exist_dwnld_url.append(TNM_tile_URL)
-                    exist_dwnld_size += TNM_tile_size
+                    exist_dwnld_size += TNM_file_size
+                    exist_list()
             if gui_subset:
-                if gui_subset in TNM_title:
+                if gui_subset in TNM_file_title:
+                    tiles_needed_count += 1
                     down_list()
                 else:
                     pass
             else:
                 down_list()
 
-        tile_needed_count = len(dwnld_url)
-        exist_file_count = len(exist_tile_titles)
-        tile_download_count = tile_needed_count - exist_file_count
+        exist_file_count = len(exist_TNM_titles)
+        tile_download_count = len(dwnld_url) - exist_file_count
 
-        for t in exist_tile_titles:
-            if t in tile_titles:
-                tile_titles.remove(t)
+        for t in exist_TNM_titles:
+            if t in TNM_file_titles:
+                TNM_file_titles.remove(t)
         for url in exist_dwnld_url:
             if url in dwnld_url:
                 dwnld_url.remove(url)
-
-
+                
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
-
-    if exist_file_list:
-        exist_msg = "\n{0} complete files/archive(s) exist locally and will be used by module.".format(len(exist_file_list))
+    
+    if exist_zip_list:
+        exist_msg = "\n{0} complete files/archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
         gscript.message(exist_msg)
     if cleanup_list:
-        cleanup_msg = "\n{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
+        cleanup_msg = "\n{0} existing incomplete file(s) detected and removed. Run module again.".format(len(cleanup_list))
         gscript.fatal(cleanup_msg)
 
     if dwnld_size:
@@ -363,18 +377,13 @@ def main():
             total_size_str = str("{0:.2f}".format(total_size_float) + " GB")
     else:
         total_size_str = '0'
-
-    # Variables created for info display
-    if gui_k_flag:
-        k_flag = "'k' flag set. KEEP source files after download."
-    else:
-        k_flag = "'k' flag NOT set. REMOVE source files after download."
+    
     # Prints 'none' if all tiles available locally
-    if tile_titles:
-        tile_titles_info = "\n".join(tile_titles)
+    if TNM_file_titles:
+        TNM_file_titles_info = "\n".join(TNM_file_titles)
     else:
-        tile_titles_info = 'none'
-
+        TNM_file_titles_info = 'none'
+    
     # Formatted return for 'i' flag
     if tile_download_count == 0:
         data_info = "USGS file(s) to download: NONE"
@@ -391,15 +400,15 @@ def main():
         data_info = '\n'.join(data_info).format(size=total_size_str,
                                                 count=tile_download_count,
                                                 srs=product_srs,
-                                                tile=tile_titles_info)
+                                                tile=TNM_file_titles_info)
 
     if gui_i_flag:
-        gscript.info(data_info)
+        gscript.message(data_info)
         gscript.info("To download USGS data, remove <i> flag, and rerun r.in.usgs.")
         return
     else:
         gscript.verbose(data_info)
-
+    
     # USGS data download process
     if tile_download_count == 0:
         gscript.message("Extracting existing USGS Data...")
@@ -408,21 +417,19 @@ def main():
 
     TNM_count = len(dwnld_url)
     download_count = 0
-    LT_paths = []
-    LZ_paths = []
+    local_tile_path_list = []
+    local_zip_path_list = []
     patch_names = []
 
-    print "TNM_count = " + str(TNM_count)
     # Download files
     for url in dwnld_url:
         file_name = url.split(product_url_split)[-1]
-        print "file_name = " + file_name
-        local_file = os.path.join(work_dir, file_name)
+        local_file_path = os.path.join(work_dir, file_name)
         try:
             dwnld_req = urllib2.urlopen(url, timeout=12)
             download_bytes = int(dwnld_req.info()['Content-Length'])
             CHUNK = 16 * 1024
-            with open(local_file, "wb+") as temp_file:
+            with open(local_file_path, "wb+") as local_file:
                 count = 0
                 steps = int(download_bytes / CHUNK) + 1
                 while True:
@@ -431,13 +438,13 @@ def main():
                     count += 1
                     if not chunk:
                         break
-                    temp_file.write(chunk)
-            temp_file.close()
+                    local_file.write(chunk)
+            local_file.close()
             download_count += 1
-            if product_zip:
-                LZ_paths.append(local_file)
+            if product_is_zip:
+                local_zip_path_list.append(local_file_path)
             else:
-                LT_paths.append(local_file)
+                local_tile_path_list.append(local_file_path)
             file_complete = "Download {0} of {1}: COMPLETE".format(
                     download_count, TNM_count)
             gscript.info(file_complete)
@@ -451,39 +458,40 @@ def main():
                 gscript.fatal(file_failed)
 
     # sets already downloaded zip files or tiles to be extracted or imported
-    if exist_file_list:
-        for f in exist_file_list:
-            if product_zip:
-                LZ_paths.append(f)
-            else:
-                LT_paths.append(f)
+    if exist_zip_list:
+        for z in exist_zip_list:
+            local_zip_path_list.append(z)
+    if exist_tile_list:
+        for t in exist_tile_list:
+            local_tile_path_list.append(t)
 
-    if product_zip:
+    if product_is_zip:
         if tile_download_count == 0:
             pass
         else:
             gscript.message("Extracting data...")
 
-        for z in LZ_paths:
+        for z in local_zip_path_list:
             # Extract tiles from ZIP archives
             try:
                 with zipfile.ZipFile(z, "r") as read_zip:
                     for f in read_zip.namelist():
                         if f.endswith(product_extension):
-                            local_tile = os.path.join(work_dir, str(f))
-                            if os.path.exists(local_tile):
-                                os.remove(local_tile)
+                            extracted_tile = os.path.join(work_dir, str(f))
+                            if os.path.exists(extracted_tile):
+                                os.remove(extracted_tile)
+                                read_zip.extract(f, work_dir)
                             else:
                                 read_zip.extract(f, work_dir)
-                if os.path.exists(local_tile):
-                    LT_paths.append(local_tile)
-                    cleanup_list.append(local_tile)
+                if os.path.exists(extracted_tile):
+                    local_tile_path_list.append(extracted_tile)
+                    cleanup_list.append(extracted_tile)
             except:
-                cleanup_list.append(local_tile)
+                cleanup_list.append(extracted_tile)
                 gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
 
-    LT_count = len(LT_paths)
-    for t in LT_paths:
+    local_tile_count = len(local_tile_path_list)
+    for t in local_tile_path_list:
         LT_file_name = os.path.basename(t)
         LT_layer_name = os.path.splitext(LT_file_name)[0]
         patch_names.append(LT_layer_name)
@@ -499,35 +507,32 @@ def main():
         except CalledModuleError:
             in_error = ("Unable to import '{0}'").format(LT_file_name)
             gscript.fatal(in_error)
-
-    if LT_count > 1:
-        try:
-            gscript.use_temp_region()
-            # set the resolution
-            if product_resolution:
-                gscript.run_command('g.region', res=product_resolution, flags='a')
-            gscript.run_command('r.patch', input=patch_names,
-                                output=gui_output_layer)
-            gscript.del_temp_region()
-            out_info = ("Patched composite layer '{0}' added").format(gui_output_layer)
-            gscript.verbose(out_info)
-            if not gui_k_flag:
-                gscript.run_command('g.remove', type='raster',
-                                    name=patch_names, flags='f')
-        except CalledModuleError:
-            gscript.fatal("Unable to patch tiles.")
-    elif LT_count == 1:
-        gscript.run_command('g.rename', raster=(patch_names[0], gui_output_layer))
+    
+    if local_tile_count == tiles_needed_count:
+        if local_tile_count > 1:
+            try:
+                gscript.use_temp_region()
+                # set the resolution
+                if product_resolution:
+                    gscript.run_command('g.region', res=product_resolution, flags='a')
+                gscript.run_command('r.patch', input=patch_names,
+                                    output=gui_output_layer)
+                gscript.del_temp_region()
+                out_info = ("Patched composite layer '{0}' added").format(gui_output_layer)
+                gscript.verbose(out_info)
+                if not gui_k_flag:
+                    gscript.run_command('g.remove', type='raster',
+                                        name=patch_names, flags='f')
+            except CalledModuleError:
+                gscript.fatal("Unable to patch tiles.")
+        elif local_tile_count == 1:
+            gscript.run_command('g.rename', raster=(patch_names[0], gui_output_layer))
 
     # Check that downloaded files match expected count
-    # this condition needs to be fixed, doesn't work for nlcd
-    if LT_count == tile_API_count:
-        temp_down_count = "{0} of {1} tile/s succesfully imported.".format(LT_count,
-                          tile_API_count)
+        temp_down_count = "{0} of {1} tile/s succesfully imported.".format(local_tile_count,
+                          tiles_needed_count)
         gscript.info(temp_down_count)
     else:
-        print LT_count
-        print tile_API_count
         gscript.fatal("Error downloading files. Please retry.")
 
     # Keep source files if 'k' flag active
