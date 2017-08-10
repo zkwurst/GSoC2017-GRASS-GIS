@@ -46,17 +46,17 @@
 #% answer: 1/3 arc-second
 #% label: NED dataset
 #% description: Choose which available USGS dataset to query
-#% guisection: ned
+#% guisection: NED
 #%end
 
 #%option
 #% key: nlcd_dataset
 #% required: no
-#% options: National Land Cover Database (NLCD) - 2001, National Land Cover Database (NLCD) - 2006', National Land Cover Database (NLCD) - 2011
+#% options: National Land Cover Database (NLCD) - 2001, National Land Cover Database (NLCD) - 2006, National Land Cover Database (NLCD) - 2011
 #% answer: National Land Cover Database (NLCD) - 2011
 #% label: NLCD dataset
 #% description: Choose which available NLCD dataset to query
-#% guisection: nlcd
+#% guisection: NLCD
 #%end
 
 #%option
@@ -66,17 +66,17 @@
 #% answer: Land Cover
 #% label: NLCD subset
 #% description: Choose which available NLCD subset to query
-#% guisection: nlcd
+#% guisection: NLCD
 #%end
 
 #%option
 #% key: naip_dataset
 #% required: no
-#% options: USDA National Agriculture Imagery Program (NAIP)
-#% answer: USDA National Agriculture Imagery Program (NAIP)
+#% options: Imagery - 1 meter (NAIP)
+#% answer: Imagery - 1 meter (NAIP)
 #% label: NAIP dataset
 #% description: Choose which available NAIP dataset to query
-#% guisection: naip
+#% guisection: NAIP
 #%end
 
 #%option G_OPT_M_DIR
@@ -139,10 +139,10 @@ def main():
                         '1/9 arc-second': (1. / 3600 / 9, 3, 10)
                         },
                 'subset':{},
-                'extent':{
+                'extent':[
                         '1 x 1 degree',
                         '15 x 15 minute'
-                        },
+                         ],
                 'format':'IMG',
                 'extension':'img',
                 'zip':True,
@@ -154,47 +154,44 @@ def main():
         "nlcd":{
                 'product':'National Land Cover Database (NLCD)',
                 'dataset':{
-                        'National Land Cover Database (NLCD) - 2001',
-                        'National Land Cover Database (NLCD) - 2006',
-                        'National Land Cover Database (NLCD) - 2011'
+                        'National Land Cover Database (NLCD) - 2001': (1. / 3600, 30, 100),
+                        'National Land Cover Database (NLCD) - 2006': (1. / 3600, 30, 100),
+                        'National Land Cover Database (NLCD) - 2011': (1. / 3600, 30, 100)
                         },
                 'subset':{
-                        'Percent Developed Imperviousness', 
+                        'Percent Developed Imperviousness',
                         'Percent Tree Canopy',
                         'Land Cover'
                         },
-                'extent':{
-                        '3 x 3 degree'
-                        },
-                'format':'GEOTIFF',
+                'extent': ['3 x 3 degree'],
+                'format':'GeoTIFF',
                 'extension':'tif',
                 'zip':True,
                 'srs':'wgs84',
                 'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
-                'interpolation':'bilinear',
+                'interpolation':'nearest',
                 'url_split':'&FNAME='
                 },
         "naip":{
                 'product':'USDA National Agriculture Imagery Program (NAIP)',
                 'dataset':{
-                        'Imagery - 1 meter (NAIP)':{()}
-                        },
+                        'Imagery - 1 meter (NAIP)': (1. / 3600 / 27, 1, 3)},
                 'subset':{},
-                'extent':{
+                'extent':[
                         '3.75 x 3.75 minute',
-                        },
+                         ],
                 'format':'JPEG2000',
                 'extension':'jp2',
                 'zip':False,
                 'srs':'wgs84',
                 'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
-                'interpolation':'bilinear',
+                'interpolation':'nearest',
                 'url_split':'/'
                 }}
 
     # Set GRASS GUI options and flags to python variables
     gui_product = options['product']
-    
+
     # Variables from USGS product dict
     nav_string = usgs_product_dict[gui_product]
     product = nav_string['product']
@@ -205,6 +202,7 @@ def main():
     product_proj4 = nav_string['srs_proj4']
     product_interpolation = nav_string['interpolation']
     product_url_split = nav_string['url_split']
+    product_extent = nav_string['extent']
 
 
     if gui_product == 'ned':
@@ -225,7 +223,7 @@ def main():
     gui_i_flag = flags['i']
     gui_k_flag = flags['k']
     work_dir = options['output_directory']
-    
+
     # current units
     try:
         proj = gscript.parse_command('g.proj', flags='g')
@@ -258,10 +256,11 @@ def main():
     str_bbox = ",".join((str(coord) for coord in list_bbox))
 
     # Format variables for TNM API call
-    
+
     gui_prod_str = str(product_tag)
     datasets = urllib.quote_plus(gui_prod_str)
     prod_format = urllib.quote_plus(product_format)
+    prod_extent = urllib.quote_plus(product_extent[0])
 
     # Create TNM API URL
     base_TNM = "https://viewer.nationalmap.gov/tnmaccess/api/products?"
@@ -269,6 +268,8 @@ def main():
     bbox_TNM = "&bbox={0}".format(str_bbox)
     prod_format_TNM = "&prodFormats={0}".format(prod_format)
     TNM_API_URL = base_TNM + datasets_TNM + bbox_TNM + prod_format_TNM
+    if gui_product == 'nlcd':
+        TNM_API_URL += "&prodExtents={0}".format(prod_extent)
 
     gscript.verbose("TNM API Query URL:\t{0}".format(TNM_API_URL))
 
@@ -283,7 +284,7 @@ def main():
         return_JSON = json.load(TNM_API_GET)
     except:
         gscript.fatal("Unable to load USGS JSON object.")
-    
+
     # adds zip properties to needed lists for download
     def down_list():
         dwnld_url.append(TNM_tile_URL)
@@ -332,7 +333,7 @@ def main():
         tile_needed_count = len(dwnld_url)
         exist_file_count = len(exist_tile_titles)
         tile_download_count = tile_needed_count - exist_file_count
-        
+
         for t in exist_tile_titles:
             if t in tile_titles:
                 tile_titles.remove(t)
@@ -350,7 +351,7 @@ def main():
     if cleanup_list:
         cleanup_msg = "\n{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
         gscript.fatal(cleanup_msg)
-    
+
     if dwnld_size:
         total_size = sum(dwnld_size) - exist_dwnld_size
         len_total_size = len(str(total_size))
@@ -406,7 +407,7 @@ def main():
         gscript.message("Downloading USGS Data...")
 
     TNM_count = len(dwnld_url)
-    LT_count = 0
+    download_count = 0
     LT_paths = []
     LZ_paths = []
     patch_names = []
@@ -432,18 +433,21 @@ def main():
                         break
                     temp_file.write(chunk)
             temp_file.close()
-            LT_count += 1
-            LT_paths.append(local_file)
+            download_count += 1
+            if product_zip:
+                LZ_paths.append(local_file)
+            else:
+                LT_paths.append(local_file)
             file_complete = "Download {0} of {1}: COMPLETE".format(
-                    LT_count, TNM_count)
+                    download_count, TNM_count)
             gscript.info(file_complete)
         except urllib2.URLError:
             gscript.fatal("USGS download request has timed out. Network or formatting error.")
         except StandardError:
             cleanup_list.append(local_file)
-            if LT_count:
+            if download_count:
                 file_failed = "Download {0} of {1}: FAILED".format(
-                            LT_count, TNM_count)
+                            download_count, TNM_count)
                 gscript.fatal(file_failed)
 
     # sets already downloaded zip files or tiles to be extracted or imported
@@ -454,11 +458,12 @@ def main():
             else:
                 LT_paths.append(f)
 
-    if product_zip == True:
+    if product_zip:
         if tile_download_count == 0:
             pass
         else:
             gscript.message("Extracting data...")
+
         for z in LZ_paths:
             # Extract tiles from ZIP archives
             try:
@@ -471,41 +476,29 @@ def main():
                             else:
                                 read_zip.extract(f, work_dir)
                 if os.path.exists(local_tile):
-                    LT_count += 1
                     LT_paths.append(local_tile)
                     cleanup_list.append(local_tile)
             except:
                 cleanup_list.append(local_tile)
                 gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
 
-    else:
-        for t in LT_paths:
-            LT_file_name = os.path.basename(t)
-            LT_layer_name = os.path.splitext(LT_file_name)[0]
-            patch_names.append(LT_layer_name)
-            in_info = ("Importing and reprojecting {0}...").format(LT_file_name)
-            gscript.info(in_info)
-            # Workaround to not knowing resolution details for all extents
-            if not product_resolution:
-                try:
-                    gscript.run_command('r.import', input=t, output=LT_layer_name,
-                                    extent="region", resample=product_interpolation)
-                    if not gui_k_flag:
-                        cleanup_list.append(t)
-                except CalledModuleError:
-                    in_error = ("Unable to import '{0}'").format(LT_file_name)
-                    gscript.fatal(in_error)
-            # If extent resolution is known
-            else:
-                try:
-                    gscript.run_command('r.import', input=t, output=LT_layer_name,
-                                        resolution='value', resolution_value=product_resolution,
-                                        extent="region", resample=product_interpolation)
-                    if not gui_k_flag:
-                        cleanup_list.append(t)
-                except CalledModuleError:
-                    in_error = ("Unable to import '{0}'").format(LT_file_name)
-                    gscript.fatal(in_error)
+    LT_count = len(LT_paths)
+    for t in LT_paths:
+        LT_file_name = os.path.basename(t)
+        LT_layer_name = os.path.splitext(LT_file_name)[0]
+        patch_names.append(LT_layer_name)
+        in_info = ("Importing and reprojecting {0}...").format(LT_file_name)
+        gscript.info(in_info)
+
+        try:
+            gscript.run_command('r.import', input=t, output=LT_layer_name,
+                                resolution='value', resolution_value=product_resolution,
+                                extent="region", resample=product_interpolation)
+            if not gui_k_flag:
+                cleanup_list.append(t)
+        except CalledModuleError:
+            in_error = ("Unable to import '{0}'").format(LT_file_name)
+            gscript.fatal(in_error)
 
     if LT_count > 1:
         try:
@@ -527,9 +520,10 @@ def main():
         gscript.run_command('g.rename', raster=(patch_names[0], gui_output_layer))
 
     # Check that downloaded files match expected count
+    # this condition needs to be fixed, doesn't work for nlcd
     if LT_count == tile_API_count:
-        temp_down_count = ("{0} of {1} tile/s succesfully imported.").format(LT_count,
-                           tile_API_count)
+        temp_down_count = "{0} of {1} tile/s succesfully imported.".format(LT_count,
+                          tile_API_count)
         gscript.info(temp_down_count)
     else:
         print LT_count
