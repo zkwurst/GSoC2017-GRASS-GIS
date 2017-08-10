@@ -33,52 +33,62 @@
 #%option
 #% key: product
 #% required: yes
-#% options: vectorcmb, nhd, nbdmi, gnis, nsd, ned, naip, ustopo, woodland, hro, nlcd, smallscale, histtopo, nedsrc, ntd, nbd
-#% answer: ned
+#% options: ned, nlcd, naip
 #% label: USGS data product
 #% description: Choose which available USGS data product to query
 #% guisection: USGS Data Selection
 #%end
 
 #%option
-#% key: dataset
-#% required: yes
-#% options: NHDPlus High Resolution (NHDPlus HR) Beta, National Hydrography Dataset (NHD), Watershed Boundary Dataset (WBD), 5 meter DEM (Alaska only), 2 arc-second DEM - Alaska, 1/3 arc-second DEM, 1 meter DEM, 1/9 arc-second DEM, Contours (1:24,000-scale), 1 arc-second DEM, US Topo Current, US Topo Non-Current, National Land Cover Database (NLCD) - 2006, National Land Cover Database (NLCD) - 2011, National Land Cover Database (NLCD) - 2001, Hydrography (Small-scale), Contours (Small-scale), Transportation (Small-scale), Elevation (Small-scale), Land Cover (Small-scale), Orthoimagery (Small-scale), Structures (Small-scale), Boundaries (Small-scale), Lidar Point Cloud (LPC), DEM Source (OPR), Ifsar Orthorectified Radar Image (ORI), Ifsar Digital Surface Model (DSM), USFS Roads, National Transportation Dataset
-#% answer: ned
-#% label: USGS dataset
+#% key: ned_dataset
+#% required: no
+#% options: 1 arc-second, 1/3 arc-second, 1/9 arc-second
+#% answer: 1/3 arc-second
+#% label: NED dataset
 #% description: Choose which available USGS dataset to query
-#% guisection: USGS Data Selection
-#%end
-
-
-#%option
-#% key: extent
-#% required: yes
-#% options: HU-4 Subregion, State, HU-8 Subbasin, National, HU-2 Region, Varies, 1 x 1 degree, 10000 x 10000 meter, 15 x 15 minute, 7.5 x 7.5 minute, 3 x 3 degree, North America, Contiguous US
-#% label: USGS dataset extent
-#% description: Choose which available USGS dataset extent
-#% guisection: USGS Data Selection
+#% guisection: ned
 #%end
 
 #%option
-#% key: other
+#% key: nlcd_dataset
+#% required: no
+#% options: National Land Cover Database (NLCD) - 2001, National Land Cover Database (NLCD) - 2006', National Land Cover Database (NLCD) - 2011
+#% answer: National Land Cover Database (NLCD) - 2011
+#% label: NLCD dataset
+#% description: Choose which available NLCD dataset to query
+#% guisection: nlcd
+#%end
+
+#%option
+#% key: nlcd_subset
 #% required: no
 #% options: Percent Developed Imperviousness, Percent Tree Canopy, Land Cover
-#% label: extra options
-#% description: Options specific to product subsets
-#% guisection: USGS Data Selection
+#% answer: Land Cover
+#% label: NLCD subset
+#% description: Choose which available NLCD subset to query
+#% guisection: nlcd
+#%end
+
+#%option
+#% key: naip_dataset
+#% required: no
+#% options: USDA National Agriculture Imagery Program (NAIP)
+#% answer: USDA National Agriculture Imagery Program (NAIP)
+#% label: NAIP dataset
+#% description: Choose which available NAIP dataset to query
+#% guisection: naip
 #%end
 
 #%option G_OPT_M_DIR
 #% key: output_directory
-#% required: no
+#% required: yes
 #% description: Directory for USGS data download and processing
 #% guisection: Download Options
 #%end
 
 #%option G_OPT_R_OUTPUT
 #% key: output
-#% required: no
+#% required: yes
 #% guisection: Download Options
 #%end
 
@@ -119,121 +129,120 @@ from grass.exceptions import CalledModuleError
 cleanup_list = []
 
 def main():
+
+    usgs_product_dict = {
+        "ned":{
+                'product':'National Elevation Dataset (NED)',
+                'dataset':{
+                        '1 arc-second': (1. / 3600, 30, 100),
+                        '1/3 arc-second': (1. / 3600 / 3, 10, 30),
+                        '1/9 arc-second': (1. / 3600 / 9, 3, 10)
+                        },
+                'subset':{},
+                'extent':{
+                        '1 x 1 degree',
+                        '15 x 15 minute'
+                        },
+                'format':'IMG',
+                'extension':'img',
+                'zip':True,
+                'srs':'wgs84',
+                'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
+                'interpolation':'bilinear',
+                'url_split':'/'
+                },
+        "nlcd":{
+                'product':'National Land Cover Database (NLCD)',
+                'dataset':{
+                        'National Land Cover Database (NLCD) - 2001',
+                        'National Land Cover Database (NLCD) - 2006',
+                        'National Land Cover Database (NLCD) - 2011'
+                        },
+                'subset':{
+                        'Percent Developed Imperviousness', 
+                        'Percent Tree Canopy',
+                        'Land Cover'
+                        },
+                'extent':{
+                        '3 x 3 degree'
+                        },
+                'format':'GEOTIFF',
+                'extension':'tif',
+                'zip':True,
+                'srs':'wgs84',
+                'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
+                'interpolation':'bilinear',
+                'url_split':'&FNAME='
+                },
+        "naip":{
+                'product':'USDA National Agriculture Imagery Program (NAIP)',
+                'dataset':{
+                        'Imagery - 1 meter (NAIP)':{()}
+                        },
+                'subset':{},
+                'extent':{
+                        '3.75 x 3.75 minute',
+                        },
+                'format':'JPEG2000',
+                'extension':'jp2',
+                'zip':False,
+                'srs':'wgs84',
+                'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
+                'interpolation':'bilinear',
+                'url_split':'/'
+                }}
+
     # Set GRASS GUI options and flags to python variables
     gui_product = options['product']
-    gui_dataset = options['dataset']
-    gui_extent = options['extent']
-    gui_other = options['other']
+    
+    # Variables from USGS product dict
+    nav_string = usgs_product_dict[gui_product]
+    product = nav_string['product']
+    product_format = nav_string['format']
+    product_extension = nav_string['extension']
+    product_zip = nav_string['zip']
+    product_srs = nav_string['srs']
+    product_proj4 = nav_string['srs_proj4']
+    product_interpolation = nav_string['interpolation']
+    product_url_split = nav_string['url_split']
+
+
+    if gui_product == 'ned':
+        gui_dataset = options['ned_dataset']
+        product_tag = product + " " + gui_dataset
+        gui_subset = None
+    if gui_product == 'nlcd':
+        gui_dataset = options['nlcd_dataset']
+        product_tag = gui_dataset
+        gui_subset = options['nlcd_subset']
+    if gui_product == 'naip':
+        gui_dataset = options['naip_dataset']
+        product_tag = nav_string['product']
+        gui_subset = None
+
     gui_output_layer = options['output']
     gui_resampling_method = options['resampling_method']
     gui_i_flag = flags['i']
-    global gui_k_flag
     gui_k_flag = flags['k']
     work_dir = options['output_directory']
-
-    # Data dictionary generator
-
-    dict_TNM_API_URL = "https://viewer.nationalmap.gov/tnmaccess/api/datasets?"
-    dict_TNM_API_GET = urllib2.urlopen(dict_TNM_API_URL, timeout=12)
-    dict_returnJSON = json.load(dict_TNM_API_GET)
-    
-    dict_TNM_API_URL = "https://viewer.nationalmap.gov/tnmaccess/api/datasets?"
-    dict_TNM_API_GET = urllib2.urlopen(dict_TNM_API_URL, timeout=12)
-    dict_returnJSON = json.load(dict_TNM_API_GET)
-
-    usgs_dict = {}
-    for product in dict_returnJSON:
-        prod_title = str(product["sbDatasetTag"])
-        prod_id = str(product["internalId"])
-        prod_tags = product['tags']
-        usgs_dict[prod_id] = {}
-        usgs_dict[prod_id]["product"] = {}
-        usgs_dict[prod_id] = {"product":prod_title}
-        usgs_dict[prod_id]["dataset"] = {}
-        for tag in prod_tags:
-            usgs_dict[prod_id]["dataset"][tag] = {}
-            prod_extents = prod_tags[tag]["extentsFormats"]
-            usgs_dict[prod_id]["dataset"][tag]["extents"] = {}
-            prod_data_tag = prod_tags[tag]["sbDatasetTag"]
-            usgs_dict[prod_id]["dataset"][tag]["sbDatasetTag"] = prod_data_tag
-            for prod_extent in prod_extents:
-                usgs_dict[prod_id]["dataset"][tag]["extents"][prod_extent] = {}
-                prod_formats = prod_tags[tag]["extentsFormats"][str(prod_extent)]
-                usgs_dict[prod_id]["dataset"][tag]["extents"][prod_extent]["formats"] = []
-                usgs_dict[prod_id]["dataset"][tag]["extents"][prod_extent]["formats"] = prod_formats
-
-    usgs_product_dict = {}
-    for p in usgs_dict:
-        product_title = usgs_dict[p]['product']
-        product_datasets = []
-        product_extents = []
-        product_formats = []
-        first_formats = ['IMG', 'GeoTIFF', 'GeoPDF']
-        second_formats = ['TIFF']
-        third_formats = ['Shapefile']
-        product_format = None
-        for ds in usgs_dict[p]['dataset']:
-            product_datasets.append(str(ds))
-            for e in usgs_dict[p]['dataset'][ds]['extents']:
-                if e not in product_extents:
-                    product_extents.append(str(e))
-                for f in usgs_dict[p]['dataset'][ds]['extents'][e]['formats']:
-                    if f not in product_formats:
-                        product_formats.append(str(f))
-                    if f in first_formats:
-                        product_format = f
-                    else:
-                        if f in second_formats:
-                            product_format = f
-                        else:
-                            if f in third_formats:
-                                product_format = f
-                        
-        usgs_product_dict[p] = {
-             'product':product_title,
-             'dataset':product_datasets,
-             'extent':product_extents,
-             'format':product_format,
-             'srs':'wgs84',
-             'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
-             'interpolation':None}
-        if p == 'ned':
-            usgs_product_dict[p]['dataset'] = {
-                    "1 arc-second DEM": (1. / 3600, 30, 100),
-                    "1/3 arc-second DEM": (1. / 3600 / 3, 10, 30),
-                    "1/9 arc-second DEM": (1. / 3600 / 9, 3, 10)}
-            usgs_product_dict[p]['interpolation'] = 'bilinear'
-
-
-    # Dynamic variables called from USGS data dict
-    nav_string = usgs_product_dict[gui_product]
-    product_title = nav_string['product']
-    product_format = nav_string['format']
-    product_dataset = nav_string['dataset']
-    product_tag = usgs_dict[gui_product]['dataset'][gui_dataset]['sbDatasetTag']
-    product_srs = usgs_product_dict[gui_product]['srs']
-    product_proj4 = nav_string['srs_proj4']
-    product_interpolation = nav_string['interpolation']
     
     # current units
     try:
         proj = gscript.parse_command('g.proj', flags='g')
         if gscript.locn_is_latlong():
-            product_resolution = product_dataset[gui_dataset][0]
+            product_resolution = nav_string['dataset'][gui_dataset][0]
         elif float(proj['meters']) == 1:
-            product_resolution = product_dataset[gui_dataset][1]
+            product_resolution = nav_string['dataset'][gui_dataset][1]
         else:
             # we assume feet
-            product_resolution = product_dataset[gui_dataset][2]
-        
-        print "Product Resolution = " + str(product_resolution)
+            product_resolution = nav_string['dataset'][gui_dataset][2]
     except TypeError:
         product_resolution = False
 
     if gui_resampling_method == 'default':
         gui_resampling_method = nav_string['interpolation']
         gscript.verbose(_("The default resampling method for product {product} is {res}").format(product=gui_product,
-                        res=usgs_product_dict[p]['interpolation']))
+                        res=product_interpolation))
 
     # Get coordinates for current GRASS computational region and convert to USGS SRS
     gregion = gscript.region()
@@ -251,8 +260,6 @@ def main():
     # Format variables for TNM API call
     
     gui_prod_str = str(product_tag)
-    
-#    gui_prod_str = product_title + " " + gui_extent
     datasets = urllib.quote_plus(gui_prod_str)
     prod_format = urllib.quote_plus(product_format)
 
@@ -293,43 +300,59 @@ def main():
         dwnld_url = []
         dataset_name = []
         tile_titles = []
-        exist_zip_list = []
+        exist_dwnld_size = 0
+        exist_dwnld_url = []
+        exist_tile_titles = []
+        exist_file_list = []
         for tile in return_JSON['items']:
             TNM_title = tile['title']
             TNM_tile_URL = str(tile['downloadURL'])
             TNM_tile_size = int(tile['sizeInBytes'])
-            TNM_zip_name = TNM_tile_URL.split('/')[-1]
-            pre_local_zip = os.path.join(work_dir, TNM_zip_name)
-            zip_exists = os.path.exists(pre_local_zip)
-            if zip_exists:
-                existing_LZ_size = os.path.getsize(pre_local_zip)
-                if abs(existing_LZ_size - TNM_tile_size) > size_diff_tolerance:
-                    cleanup_list.append(pre_local_zip)
+            TNM_file_name = TNM_tile_URL.split(product_url_split)[-1]
+            pre_local_file = os.path.join(work_dir, TNM_file_name)
+            file_exists = os.path.exists(pre_local_file)
+            if file_exists:
+                existing_LF_size = os.path.getsize(pre_local_file)
+                if abs(existing_LF_size - TNM_tile_size) > size_diff_tolerance:
+                    cleanup_list.append(pre_local_file)
                     down_list()
                 else:
-                    exist_zip_list.append(pre_local_zip)
-            if gui_other:
-                if gui_other in TNM_title:
+                    exist_file_list.append(pre_local_file)
+                    exist_tile_titles.append(TNM_title)
+                    exist_dwnld_url.append(TNM_tile_URL)
+                    exist_dwnld_size += TNM_tile_size
+            if gui_subset:
+                if gui_subset in TNM_title:
                     down_list()
                 else:
                     pass
             else:
                 down_list()
+
         tile_needed_count = len(dwnld_url)
-        exist_zip_count = len(exist_zip_list)
-        tile_download_count = tile_needed_count - exist_zip_count
+        exist_file_count = len(exist_tile_titles)
+        tile_download_count = tile_needed_count - exist_file_count
+        
+        for t in exist_tile_titles:
+            if t in tile_titles:
+                tile_titles.remove(t)
+        for url in exist_dwnld_url:
+            if url in dwnld_url:
+                dwnld_url.remove(url)
+
+
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
 
-    if exist_zip_list:
-        exist_msg = "\n{0} ZIP archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
+    if exist_file_list:
+        exist_msg = "\n{0} complete files/archive(s) exist locally and will be used by module.".format(len(exist_file_list))
         gscript.message(exist_msg)
     if cleanup_list:
         cleanup_msg = "\n{0} existing incomplete ZIP archive(s) detected and removed. Run module again.".format(len(cleanup_list))
         gscript.fatal(cleanup_msg)
     
     if dwnld_size:
-        total_size = sum(dwnld_size)
+        total_size = sum(dwnld_size) - exist_dwnld_size
         len_total_size = len(str(total_size))
         if 6 < len_total_size < 10:
             total_size_float = total_size * 1e-6
@@ -383,22 +406,22 @@ def main():
         gscript.message("Downloading USGS Data...")
 
     TNM_count = len(dwnld_url)
-    LZ_count = 0
     LT_count = 0
-    global LT_paths
     LT_paths = []
     LZ_paths = []
     patch_names = []
 
-    # Download ZIP files
+    print "TNM_count = " + str(TNM_count)
+    # Download files
     for url in dwnld_url:
-        zip_name = url.split('/')[-1]
-        local_zip = os.path.join(work_dir, zip_name)
+        file_name = url.split(product_url_split)[-1]
+        print "file_name = " + file_name
+        local_file = os.path.join(work_dir, file_name)
         try:
             dwnld_req = urllib2.urlopen(url, timeout=12)
             download_bytes = int(dwnld_req.info()['Content-Length'])
             CHUNK = 16 * 1024
-            with open(local_zip, "wb+") as temp_zip:
+            with open(local_file, "wb+") as temp_file:
                 count = 0
                 steps = int(download_bytes / CHUNK) + 1
                 while True:
@@ -407,88 +430,82 @@ def main():
                     count += 1
                     if not chunk:
                         break
-                    temp_zip.write(chunk)
-            temp_zip.close()
-            LZ_count += 1
-            LZ_paths.append(local_zip)
-            zip_complete = "Download {0} of {1}: COMPLETE".format(
-                    LZ_count, TNM_count)
-            gscript.info(zip_complete)
+                    temp_file.write(chunk)
+            temp_file.close()
+            LT_count += 1
+            LT_paths.append(local_file)
+            file_complete = "Download {0} of {1}: COMPLETE".format(
+                    LT_count, TNM_count)
+            gscript.info(file_complete)
         except urllib2.URLError:
             gscript.fatal("USGS download request has timed out. Network or formatting error.")
         except StandardError:
-            cleanup_list.append(local_zip)
-            zip_failed = "Download {0} of {1}: FAILED".format(
-                        LZ_count, TNM_count)
-            gscript.fatal(zip_failed)
+            cleanup_list.append(local_file)
+            if LT_count:
+                file_failed = "Download {0} of {1}: FAILED".format(
+                            LT_count, TNM_count)
+                gscript.fatal(file_failed)
 
-    # adds already downloaded zip file paths 
-    if exist_zip_list:
-        for z in exist_zip_list:
-            LZ_paths.append(z)
-    
-    if tile_download_count == 0:
-        pass
-    else:
-        gscript.message("Extracting data...")
+    # sets already downloaded zip files or tiles to be extracted or imported
+    if exist_file_list:
+        for f in exist_file_list:
+            if product_zip:
+                LZ_paths.append(f)
+            else:
+                LT_paths.append(f)
 
-
-    extensions_dict = {
-            "IMG":".img",
-            "GeoTIFF":".tif",
-            "GeoPDF":".pdf",
-            "TIFF":".tif",
-            "Shapefile":".shp"
-            }
-    product_file_ext = extensions_dict[product_format]
-    
-
-    for z in LZ_paths:
-        # Extract tiles from ZIP archives
-        try:
-            with zipfile.ZipFile(z, "r") as read_zip:
-                for f in read_zip.namelist():
-                    if f.endswith(product_file_ext):
-                        local_tile = os.path.join(work_dir, str(f))
-                        if os.path.exists(local_tile):
-                            os.remove(local_tile)
-                        else:
-                            read_zip.extract(f, work_dir)
-            if os.path.exists(local_tile):
-                LT_count += 1
-                LT_paths.append(local_tile)
-                cleanup_list.append(local_tile)
-        except:
-            cleanup_list.append(local_tile)
-            gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
-
-    for t in LT_paths:
-        LT_file_name = os.path.basename(t)
-        LT_layer_name = os.path.splitext(LT_file_name)[0]
-        patch_names.append(LT_layer_name)
-        in_info = ("Importing and reprojecting {0}...").format(LT_file_name)
-        gscript.info(in_info)
-        # Workaround to not knowing resolution details for all extents
-        if not product_resolution:
-            try:
-                gscript.run_command('r.import', input=t, output=LT_layer_name,
-                                extent="region", resample=gui_resampling_method)
-                if not gui_k_flag:
-                    cleanup_list.append(t)
-            except CalledModuleError:
-                in_error = ("Unable to import '{0}'").format(LT_file_name)
-                gscript.fatal(in_error)
-        # If extent resolution is known
+    if product_zip == True:
+        if tile_download_count == 0:
+            pass
         else:
+            gscript.message("Extracting data...")
+        for z in LZ_paths:
+            # Extract tiles from ZIP archives
             try:
-                gscript.run_command('r.import', input=t, output=LT_layer_name,
-                                    resolution='value', resolution_value=product_resolution,
-                                    extent="region", resample=gui_resampling_method)
-                if not gui_k_flag:
-                    cleanup_list.append(t)
-            except CalledModuleError:
-                in_error = ("Unable to import '{0}'").format(LT_file_name)
-                gscript.fatal(in_error)
+                with zipfile.ZipFile(z, "r") as read_zip:
+                    for f in read_zip.namelist():
+                        if f.endswith(product_extension):
+                            local_tile = os.path.join(work_dir, str(f))
+                            if os.path.exists(local_tile):
+                                os.remove(local_tile)
+                            else:
+                                read_zip.extract(f, work_dir)
+                if os.path.exists(local_tile):
+                    LT_count += 1
+                    LT_paths.append(local_tile)
+                    cleanup_list.append(local_tile)
+            except:
+                cleanup_list.append(local_tile)
+                gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
+
+    else:
+        for t in LT_paths:
+            LT_file_name = os.path.basename(t)
+            LT_layer_name = os.path.splitext(LT_file_name)[0]
+            patch_names.append(LT_layer_name)
+            in_info = ("Importing and reprojecting {0}...").format(LT_file_name)
+            gscript.info(in_info)
+            # Workaround to not knowing resolution details for all extents
+            if not product_resolution:
+                try:
+                    gscript.run_command('r.import', input=t, output=LT_layer_name,
+                                    extent="region", resample=product_interpolation)
+                    if not gui_k_flag:
+                        cleanup_list.append(t)
+                except CalledModuleError:
+                    in_error = ("Unable to import '{0}'").format(LT_file_name)
+                    gscript.fatal(in_error)
+            # If extent resolution is known
+            else:
+                try:
+                    gscript.run_command('r.import', input=t, output=LT_layer_name,
+                                        resolution='value', resolution_value=product_resolution,
+                                        extent="region", resample=product_interpolation)
+                    if not gui_k_flag:
+                        cleanup_list.append(t)
+                except CalledModuleError:
+                    in_error = ("Unable to import '{0}'").format(LT_file_name)
+                    gscript.fatal(in_error)
 
     if LT_count > 1:
         try:
@@ -515,6 +532,8 @@ def main():
                            tile_API_count)
         gscript.info(temp_down_count)
     else:
+        print LT_count
+        print tile_API_count
         gscript.fatal("Error downloading files. Please retry.")
 
     # Keep source files if 'k' flag active
