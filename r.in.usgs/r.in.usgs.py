@@ -33,7 +33,7 @@
 #%option
 #% key: product
 #% required: yes
-#% options: ned, nlcd, naip
+#% options: ned, nlcd, naip, ustopo
 #% label: USGS data product
 #% description: Choose which available USGS data product to query
 #% guisection: USGS Data Selection
@@ -77,6 +77,16 @@
 #% label: NAIP dataset
 #% description: Choose which available NAIP dataset to query
 #% guisection: NAIP
+#%end
+
+#%option
+#% key: ustopo_dataset
+#% required: no
+#% options: US Topo Current, US Topo Historical
+#% answer: US Topo Current
+#% label: US Topo Data
+#% description: Choose which available USGS dataset to query
+#% guisection: USTopo
 #%end
 
 #%option G_OPT_M_DIR
@@ -187,7 +197,22 @@ def main():
                 'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
                 'interpolation':'nearest',
                 'url_split':'/'
-                }}
+                },
+        "ustopo":{
+            'product':'US Topo',
+            'dataset':{
+                    'US Topo Current':(1. / 3600 / 108, 4, 12),
+                    'US Topo Historical':(1. / 3600 / 108, 4, 12)},
+            'subset':{},
+            'extent':['7.5 x 7.5 minute'],
+            'format':'GeoPDF',
+            'extension':'pdf',
+            'zip':False,
+            'srs':'wgs84',
+            'srs_proj4':"+proj=longlat +ellps=GRS80 +datum=NAD83 +nodefs",
+            'interpolation':'nearest',
+            'url_split':'/'}
+            }
 
     # Set GRASS GUI options and flags to python variables
     gui_product = options['product']
@@ -215,6 +240,10 @@ def main():
         gui_subset = options['nlcd_subset']
     if gui_product == 'naip':
         gui_dataset = options['naip_dataset']
+        product_tag = nav_string['product']
+        gui_subset = None
+    if gui_product == 'ustopo':
+        gui_dataset = options['ustopo_dataset']
         product_tag = nav_string['product']
         gui_subset = None
 
@@ -360,7 +389,10 @@ def main():
         gscript.fatal("Zero tiles available for given input parameters.")
     
     if exist_zip_list:
-        exist_msg = "\n{0} complete files/archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
+        exist_msg = "\n{0} files/archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
+        gscript.message(exist_msg)
+    if exist_tile_list:
+        exist_msg = "\n{0} files/archive(s) exist locally and will be used by module.".format(len(exist_tile_list))
         gscript.message(exist_msg)
     if cleanup_list:
         cleanup_msg = "\n{0} existing incomplete file(s) detected and removed. Run module again.".format(len(cleanup_list))
@@ -386,7 +418,7 @@ def main():
     
     # Formatted return for 'i' flag
     if tile_download_count == 0:
-        data_info = "USGS file(s) to download: NONE"
+        data_info = "\n\nUSGS file(s) to download: NONE"
     else:
         data_info = (
                      "USGS file(s) to download:",
@@ -401,13 +433,11 @@ def main():
                                                 count=tile_download_count,
                                                 srs=product_srs,
                                                 tile=TNM_file_titles_info)
-
+    
     if gui_i_flag:
-        gscript.message(data_info)
+        print data_info
         gscript.info("To download USGS data, remove <i> flag, and rerun r.in.usgs.")
-        return
-    else:
-        gscript.verbose(data_info)
+        sys.exit()
     
     # USGS data download process
     if tile_download_count == 0:
