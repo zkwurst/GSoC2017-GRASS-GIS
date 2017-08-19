@@ -3,14 +3,12 @@
 
 #MODULE:     r.in.usgs
 #
-#AUTHOR:     Zechariah Krautwurst
+#AUTHOR:    Zechariah Krautwurst
 #
 #MENTORS:    Anna Petrasova
 #            Vaclav Petras
 #
-#PURPOSE:    Download user-requested products from USGS database.
-#
-#VERSION:    [DEV] r.in.usgs
+#PURPOSE:    Download user-requested products through the USGS TNM API.
 #
 #COPYRIGHT:  (C) 2017 Zechariah Krautwurst and the GRASS Development Team
 #
@@ -19,14 +17,18 @@
 #            for details.
 
 #%module
-#% description: Download USGS data
+#% description: Download user-requested products through the USGS TNM API
+#% keyword: import
 #% keyword: raster
 #% keyword: USGS
+#% keyword: NED
+#% keyword: NLCD
 #%end
 
 #%flag
 #% key: i
 #% label: Return USGS data information without downloading files
+#% description: Return USGS data information without downloading files
 #% guisection: USGS Data Selection
 #%end
 
@@ -35,7 +37,7 @@
 #% required: yes
 #% options: ned, nlcd, naip, ustopo
 #% label: USGS data product
-#% description: Choose which available USGS data product to query
+#% description: Available USGS data products to query
 #% guisection: USGS Data Selection
 #%end
 
@@ -45,7 +47,7 @@
 #% options: 1 arc-second, 1/3 arc-second, 1/9 arc-second
 #% answer: 1/3 arc-second
 #% label: NED dataset
-#% description: Choose which available USGS dataset to query
+#% description: Available NED datasets to query
 #% guisection: NED
 #%end
 
@@ -55,7 +57,7 @@
 #% options: National Land Cover Database (NLCD) - 2001, National Land Cover Database (NLCD) - 2006, National Land Cover Database (NLCD) - 2011
 #% answer: National Land Cover Database (NLCD) - 2011
 #% label: NLCD dataset
-#% description: Choose which available NLCD dataset to query
+#% description: Available NLCD datasets to query
 #% guisection: NLCD
 #%end
 
@@ -65,7 +67,7 @@
 #% options: Percent Developed Imperviousness, Percent Tree Canopy, Land Cover
 #% answer: Land Cover
 #% label: NLCD subset
-#% description: Choose which available NLCD subset to query
+#% description: Available NLCD subsets to query
 #% guisection: NLCD
 #%end
 
@@ -75,7 +77,7 @@
 #% options: Imagery - 1 meter (NAIP)
 #% answer: Imagery - 1 meter (NAIP)
 #% label: NAIP dataset
-#% description: Choose which available NAIP dataset to query
+#% description: Available NAIP datasets to query
 #% guisection: NAIP
 #%end
 
@@ -85,7 +87,7 @@
 #% options: US Topo Current, US Topo Historical
 #% answer: US Topo Current
 #% label: US Topo Data
-#% description: Choose which available USGS dataset to query
+#% description: Available UStopo datasets to query
 #% guisection: USTopo
 #%end
 
@@ -116,8 +118,8 @@
 
 #%flag
 #% key: k
-#% label: Keep source imagery after tile download and composite map creation
-#% description: Keep downloaded source tiles and GRASS map layers
+#% label: Keep extracted files after GRASS import and patch
+#% description: Keep extracted files after GRASS import and patch
 #% guisection: Download Options
 #%end
 
@@ -139,7 +141,9 @@ from grass.exceptions import CalledModuleError
 cleanup_list = []
 
 def main():
-
+    # Hard-coded parameters needed for USGS datasets
+    # NED and NLCD datasets fully functional
+    # NAIP and UStopo not functional
     usgs_product_dict = {
         "ned":{
                 'product':'National Elevation Dataset (NED)',
@@ -217,7 +221,7 @@ def main():
     # Set GRASS GUI options and flags to python variables
     gui_product = options['product']
 
-    # Variables from USGS product dict
+    # Variable assigned from USGS product dictionary
     nav_string = usgs_product_dict[gui_product]
     product = nav_string['product']
     product_format = nav_string['format']
@@ -229,7 +233,7 @@ def main():
     product_url_split = nav_string['url_split']
     product_extent = nav_string['extent']
 
-
+    # Parameter assignments for each dataset
     if gui_product == 'ned':
         gui_dataset = options['ned_dataset']
         product_tag = product + " " + gui_dataset
@@ -246,14 +250,15 @@ def main():
         gui_dataset = options['ustopo_dataset']
         product_tag = nav_string['product']
         gui_subset = None
-
+    
+    # Assigning further parameters from GUI
     gui_output_layer = options['output']
     gui_resampling_method = options['resampling_method']
     gui_i_flag = flags['i']
     gui_k_flag = flags['k']
     work_dir = options['output_directory']
 
-    # current units
+    # Returns current units
     try:
         proj = gscript.parse_command('g.proj', flags='g')
         if gscript.locn_is_latlong():
@@ -285,7 +290,6 @@ def main():
     str_bbox = ",".join((str(coord) for coord in list_bbox))
 
     # Format variables for TNM API call
-
     gui_prod_str = str(product_tag)
     datasets = urllib.quote_plus(gui_prod_str)
     prod_format = urllib.quote_plus(product_format)
@@ -302,19 +306,21 @@ def main():
 
     gscript.verbose("TNM API Query URL:\t{0}".format(TNM_API_URL))
 
+    # Query TNM API
     try:
-        # Query TNM API
         TNM_API_GET = urllib2.urlopen(TNM_API_URL, timeout=12)
     except urllib2.URLError:
         gscript.fatal("USGS TNM API query has timed out. Check network configuration. Please try again.")
 
+    # Parse return JSON object from API query
     try:
-        # Parse return JSON object
         return_JSON = json.load(TNM_API_GET)
     except:
         gscript.fatal("Unable to load USGS JSON object.")
     
-    # adds zip properties to needed lists for download
+    # Functions down_list() and exist_list() used to determine 
+    # existing files and those that need to be downloaded.
+    
     def down_list():
         dwnld_url.append(TNM_file_URL)
         dwnld_size.append(TNM_file_size)
@@ -325,7 +331,6 @@ def main():
             if len(dataset_name) <= 1:
                 dataset_name.append(str(f['datasets'][0]))
 
-    # if files exists, execute these actions
     def exist_list():
         exist_TNM_titles.append(TNM_file_title)
         exist_dwnld_url.append(TNM_file_URL)
@@ -335,6 +340,7 @@ def main():
         else:
             exist_tile_list.append(local_tile_path)
 
+    # Assign needed parameters from returned JSON
     tile_API_count = int(return_JSON['total'])
     tiles_needed_count = 0
     size_diff_tolerance = 5
@@ -349,6 +355,7 @@ def main():
         exist_zip_list = []
         exist_tile_list = []
         extract_zip_list = []
+        # for each file returned, assign variables to needed parameters
         for f in return_JSON['items']:
             TNM_file_title = f['title']
             TNM_file_URL = str(f['downloadURL'])
@@ -358,6 +365,7 @@ def main():
             local_zip_path = os.path.join(work_dir, TNM_file_name)
             local_tile_path = os.path.join(work_dir, TNM_file_name)
             file_exists = os.path.exists(local_file_path)
+            # if file exists, but is incomplete, remove file and redownload
             if file_exists:
                 existing_local_file_size = os.path.getsize(local_file_path)
                 if abs(existing_local_file_size - TNM_file_size) > size_diff_tolerance:
@@ -366,6 +374,8 @@ def main():
                 else:
                     exist_dwnld_size += TNM_file_size
                     exist_list()
+            # NLCD API query returns subsets that cannot be filtered before
+            # they are returned. gui_subset is passed through here from GUI.
             if gui_subset:
                 if gui_subset in TNM_file_title:
                     tiles_needed_count += 1
@@ -374,20 +384,25 @@ def main():
                     pass
             else:
                 down_list()
-
+        
+        # number of complete files already downloaded
         exist_file_count = len(exist_TNM_titles)
+        # number of files to be downloaded
         tile_download_count = len(dwnld_url) - exist_file_count
 
+        # remove existing files from download lists
         for t in exist_TNM_titles:
             if t in TNM_file_titles:
                 TNM_file_titles.remove(t)
         for url in exist_dwnld_url:
             if url in dwnld_url:
                 dwnld_url.remove(url)
-                
+    
+    # return fatal error if API query returns no results for GUI input
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
     
+    # messages to user about status of files to be kept, removed, or downloaded
     if exist_zip_list:
         exist_msg = "\n{0} files/archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
         gscript.message(exist_msg)
@@ -398,6 +413,7 @@ def main():
         cleanup_msg = "\n{0} existing incomplete file(s) detected and removed. Run module again.".format(len(cleanup_list))
         gscript.fatal(cleanup_msg)
 
+    # formats JSON size from bites into needed units for combined file size
     if dwnld_size:
         total_size = sum(dwnld_size) - exist_dwnld_size
         len_total_size = len(str(total_size))
@@ -453,9 +469,12 @@ def main():
 
     # Download files
     for url in dwnld_url:
+        # create file name by splitting name from returned url
         file_name = url.split(product_url_split)[-1]
+        # add file name to local download directory
         local_file_path = os.path.join(work_dir, file_name)
         try:
+            # download files in chunks rather than write complete files to memory
             dwnld_req = urllib2.urlopen(url, timeout=12)
             download_bytes = int(dwnld_req.info()['Content-Length'])
             CHUNK = 16 * 1024
@@ -471,6 +490,7 @@ def main():
                     local_file.write(chunk)
             local_file.close()
             download_count += 1
+            # determine if file is a zip archive or another format
             if product_is_zip:
                 local_zip_path_list.append(local_file_path)
             else:
@@ -494,13 +514,12 @@ def main():
     if exist_tile_list:
         for t in exist_tile_list:
             local_tile_path_list.append(t)
-
     if product_is_zip:
         if tile_download_count == 0:
             pass
         else:
             gscript.message("Extracting data...")
-
+        # for each zip archive, extract needed file
         for z in local_zip_path_list:
             # Extract tiles from ZIP archives
             try:
@@ -519,15 +538,17 @@ def main():
             except:
                 cleanup_list.append(extracted_tile)
                 gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
-
+    
+    # operations for extracted or complete files available locally
     local_tile_count = len(local_tile_path_list)
     for t in local_tile_path_list:
+        # create variables for use in GRASS GIS import process
         LT_file_name = os.path.basename(t)
         LT_layer_name = os.path.splitext(LT_file_name)[0]
         patch_names.append(LT_layer_name)
         in_info = ("Importing and reprojecting {0}...").format(LT_file_name)
         gscript.info(in_info)
-
+        # import to GRASS GIS
         try:
             gscript.run_command('r.import', input=t, output=LT_layer_name,
                                 resolution='value', resolution_value=product_resolution,
@@ -537,7 +558,8 @@ def main():
         except CalledModuleError:
             in_error = ("Unable to import '{0}'").format(LT_file_name)
             gscript.fatal(in_error)
-    
+    # if control variables match and multiple files need to be patched, 
+    # check product resolution, run r.patch
     if local_tile_count == tiles_needed_count:
         if local_tile_count > 1:
             try:
@@ -550,6 +572,7 @@ def main():
                 gscript.del_temp_region()
                 out_info = ("Patched composite layer '{0}' added").format(gui_output_layer)
                 gscript.verbose(out_info)
+                # Remove files if 'k' flag
                 if not gui_k_flag:
                     gscript.run_command('g.remove', type='raster',
                                         name=patch_names, flags='f')
@@ -579,7 +602,6 @@ def cleanup():
     for f in cleanup_list:
         if os.path.exists(f):
             gscript.try_remove(f)
-
 
 if __name__ == "__main__":
     options, flags = gscript.parser()
