@@ -99,7 +99,7 @@
 #%end
 
 #%option G_OPT_R_OUTPUT
-#% key: output
+#% key: output_name
 #% required: yes
 #% guisection: Download Options
 #%end
@@ -406,31 +406,27 @@ def main():
                         down_list()
                         continue
         
-        print dwnld_url
-        
-        # number of complete files already downloaded
-        exist_file_count = len(exist_TNM_titles)
-        # number of files to be downloaded 
-        tile_download_count = len(dwnld_url) - exist_file_count
-
-        # remove existing files from download lists
-        for t in exist_TNM_titles:
-            if t in TNM_file_titles:
-                TNM_file_titles.remove(t)
-        for url in exist_dwnld_url:
-            if url in dwnld_url:
-                dwnld_url.remove(url)
-    
     # return fatal error if API query returns no results for GUI input
     elif tile_API_count == 0:
         gscript.fatal("Zero tiles available for given input parameters.")
+
+    # number of files to be downloaded 
+    file_download_count = len(dwnld_url)
+
+    # remove existing files from download lists
+    for t in exist_TNM_titles:
+        if t in TNM_file_titles:
+            TNM_file_titles.remove(t)
+    for url in exist_dwnld_url:
+        if url in dwnld_url:
+            dwnld_url.remove(url)
     
     # messages to user about status of files to be kept, removed, or downloaded
     if exist_zip_list:
-        exist_msg = "\n{0} files/archive(s) exist locally and will be used by module.".format(len(exist_zip_list))
+        exist_msg = "\n{0} of {1} files/archive(s) exist locally and will be used by module.".format(len(exist_zip_list), tiles_needed_count)
         gscript.message(exist_msg)
     if exist_tile_list:
-        exist_msg = "\n{0} files/archive(s) exist locally and will be used by module.".format(len(exist_tile_list))
+        exist_msg = "\n{0} of {1} files/archive(s) exist locally and will be used by module.".format(len(exist_tile_list), tiles_needed_count)
         gscript.message(exist_msg)
     if cleanup_list:
         cleanup_msg = "\n{0} existing incomplete file(s) detected and removed. Run module again.".format(len(cleanup_list))
@@ -438,7 +434,7 @@ def main():
 
     # formats JSON size from bites into needed units for combined file size
     if dwnld_size:
-        total_size = sum(dwnld_size) - exist_dwnld_size
+        total_size = sum(dwnld_size)
         len_total_size = len(str(total_size))
         if 6 < len_total_size < 10:
             total_size_float = total_size * 1e-6
@@ -456,7 +452,7 @@ def main():
         TNM_file_titles_info = 'none'
     
     # Formatted return for 'i' flag
-    if tile_download_count <= 0:
+    if file_download_count <= 0:
         data_info = "\n\nUSGS file(s) to download: NONE"
     else:
         data_info = (
@@ -469,7 +465,7 @@ def main():
                      "-------------------------",
                      )
         data_info = '\n'.join(data_info).format(size=total_size_str,
-                                                count=tile_download_count,
+                                                count=file_download_count,
                                                 srs=product_srs,
                                                 tile=TNM_file_titles_info)
     print data_info
@@ -479,7 +475,7 @@ def main():
         sys.exit()
     
     # USGS data download process
-    if tile_download_count <= 0:
+    if file_download_count <= 0:
         gscript.message("Extracting existing USGS Data...")
     else:
         gscript.message("Downloading USGS Data...")
@@ -524,7 +520,7 @@ def main():
         except urllib2.URLError:
             gscript.fatal("USGS download request has timed out. Network or formatting error.")
         except StandardError:
-            cleanup_list.append(local_file)
+            cleanup_list.append(local_file_path)
             if download_count:
                 file_failed = "Download {0} of {1}: FAILED".format(
                             download_count, TNM_count)
@@ -538,7 +534,7 @@ def main():
         for t in exist_tile_list:
             local_tile_path_list.append(t)
     if product_is_zip:
-        if tile_download_count == 0:
+        if file_download_count == 0:
             pass
         else:
             gscript.message("Extracting data...")
@@ -563,7 +559,6 @@ def main():
                 gscript.fatal("Unable to locate or extract IMG file from ZIP archive.")
     
     # operations for extracted or complete files available locally
-    local_tile_count = len(local_tile_path_list)
     for t in local_tile_path_list:
         # create variables for use in GRASS GIS import process
         LT_file_name = os.path.basename(t)
@@ -584,8 +579,11 @@ def main():
 
     # if control variables match and multiple files need to be patched, 
     # check product resolution, run r.patch
-    if local_tile_count == tiles_needed_count:
-        if local_tile_count > 1:
+    
+    # Check that downloaded files match expected count
+    completed_tiles_count = len(local_tile_path_list)
+    if completed_tiles_count == tiles_needed_count:
+        if completed_tiles_count > 1:
             try:
                 gscript.use_temp_region()
                 # set the resolution
@@ -602,11 +600,9 @@ def main():
                                         name=patch_names, flags='f')
             except CalledModuleError:
                 gscript.fatal("Unable to patch tiles.")
-        elif local_tile_count == 1:
+        elif completed_tiles_count == 1:
             gscript.run_command('g.rename', raster=(patch_names[0], gui_output_layer))
-
-    # Check that downloaded files match expected count
-        temp_down_count = "{0} of {1} tile/s succesfully imported.".format(local_tile_count,
+        temp_down_count = "\n{0} of {1} tile/s succesfully imported and patched.".format(completed_tiles_count,
                           tiles_needed_count)
         gscript.info(temp_down_count)
     else:
