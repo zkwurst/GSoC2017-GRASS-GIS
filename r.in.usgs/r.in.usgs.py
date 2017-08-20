@@ -344,12 +344,12 @@ def main():
     tile_API_count = int(return_JSON['total'])
     tiles_needed_count = 0
     size_diff_tolerance = 5
+    exist_dwnld_size = 0
     if tile_API_count > 0:
         dwnld_size = []
         dwnld_url = []
         dataset_name = []
         TNM_file_titles = []
-        exist_dwnld_size = 0
         exist_dwnld_url = []
         exist_TNM_titles = []
         exist_zip_list = []
@@ -365,29 +365,52 @@ def main():
             local_zip_path = os.path.join(work_dir, TNM_file_name)
             local_tile_path = os.path.join(work_dir, TNM_file_name)
             file_exists = os.path.exists(local_file_path)
+            file_complete = None
             # if file exists, but is incomplete, remove file and redownload
             if file_exists:
                 existing_local_file_size = os.path.getsize(local_file_path)
+                # if local file is incomplete
                 if abs(existing_local_file_size - TNM_file_size) > size_diff_tolerance:
+                    # add file to cleanup list
                     cleanup_list.append(local_file_path)
-                    down_list()
+                    # NLCD API query returns subsets that cannot be filtered before
+                    # results are returned. gui_subset is used to filter results.
+                    if not gui_subset:
+                        tiles_needed_count += 1
+                        down_list()
+                    else:
+                        if gui_subset in TNM_file_title:
+                            tiles_needed_count += 1
+                            down_list()
+                        else:
+                            continue
                 else:
-                    exist_dwnld_size += TNM_file_size
-                    exist_list()
-            # NLCD API query returns subsets that cannot be filtered before
-            # they are returned. gui_subset is passed through here from GUI.
-            if gui_subset:
-                if gui_subset in TNM_file_title:
+                    if not gui_subset:
+                        tiles_needed_count += 1
+                        exist_list()
+                        exist_dwnld_size += TNM_file_size
+                    else:
+                        if gui_subset in TNM_file_title:
+                            tiles_needed_count += 1
+                            exist_list()
+                            exist_dwnld_size += TNM_file_size
+                        else:
+                            continue
+            else:
+                if not gui_subset:
                     tiles_needed_count += 1
                     down_list()
                 else:
-                    pass
-            else:
-                down_list()
+                    if gui_subset in TNM_file_title:
+                        tiles_needed_count += 1
+                        down_list()
+                        continue
+        
+        print dwnld_url
         
         # number of complete files already downloaded
         exist_file_count = len(exist_TNM_titles)
-        # number of files to be downloaded
+        # number of files to be downloaded 
         tile_download_count = len(dwnld_url) - exist_file_count
 
         # remove existing files from download lists
@@ -433,7 +456,7 @@ def main():
         TNM_file_titles_info = 'none'
     
     # Formatted return for 'i' flag
-    if tile_download_count == 0:
+    if tile_download_count <= 0:
         data_info = "\n\nUSGS file(s) to download: NONE"
     else:
         data_info = (
@@ -449,14 +472,14 @@ def main():
                                                 count=tile_download_count,
                                                 srs=product_srs,
                                                 tile=TNM_file_titles_info)
+    print data_info
     
     if gui_i_flag:
-        print data_info
         gscript.info("To download USGS data, remove <i> flag, and rerun r.in.usgs.")
         sys.exit()
     
     # USGS data download process
-    if tile_download_count == 0:
+    if tile_download_count <= 0:
         gscript.message("Extracting existing USGS Data...")
     else:
         gscript.message("Downloading USGS Data...")
@@ -558,6 +581,7 @@ def main():
         except CalledModuleError:
             in_error = ("Unable to import '{0}'").format(LT_file_name)
             gscript.fatal(in_error)
+
     # if control variables match and multiple files need to be patched, 
     # check product resolution, run r.patch
     if local_tile_count == tiles_needed_count:
