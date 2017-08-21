@@ -12,36 +12,36 @@ local directory, then imported and patched through GRASS GIS.
 <h3>USGS Data Selection</h3>
 <h4>'i' FLAG</h4>
 If the 'i' flag is set, information about data meeting the input parameters
-is displayed without downloading the data.</br>
+is displayed without downloading the data.<br>
 If the 'i' flag is NOT set, the returned information will display and then begin immediate download.
 <p>
 <h4>USGS data product:</h4>
-ned (National Elevation Dataset)</br>
+ned (National Elevation Dataset)<br>
 nlcd (National Land Cover Dataset)
 
 <h3>NED (National Elevation Dataset)</h3>
 NED data are available at resolutions of 1 arc-second (about 30 meters) and 1/3 arc-second (about 10 meters), and in limited areas at 1/9 arc-second (about 3 meters).
 <h4>NED dataset:</h4>
-1 arc-second </br>
-1/3 arc-second (about 10 meters)</br>
+1 arc-second <br>
+1/3 arc-second (about 10 meters)<br>
 1/9 arc-second (about 3 meters)(in limited areas)
 
 <h3>NLCD (National Land Cover Dataset)</h3>
 NLCD data are available for years 2001, 2006, and 2011. NLCD 2011 land cover was created on a path/row basis and mosaicked to create a seamless national product. The data in NLCD 2011 are completely integrated with NLCD 2001 and NLCD 2006. As part of the NLCD 2011 project, the NLCD 2001 and 2006 land cover data products were revised and reissued to provide full compatibility with the new NLCD 2011 products. NLCD 2011 land cover was developed for the conterminous United States and Alaska.
 <h4>NLCD dataset:</h4>
-NLCD 2001</br>
-NLCD 2006</br>
-NLCD 2011</br>
+NLCD 2001<br>
+NLCD 2006<br>
+NLCD 2011<br>
 
 <h4>NLCD subset:</h4>
-Percent Developed Imperviousness</br>
-Percent Tree Canopy</br>
-Land Cover</br>
+Percent Developed Imperviousness<br>
+Percent Tree Canopy<br>
+Land Cover<br>
 
 <h3>Download Options</h3>
 <h4>'k' FLAG</h4>
 By default the 'k' flag is NOT set. Only files closest to the original source data are 
-retained.</br>
+retained.<br>
 If the 'k' flag is set, extracted files from compressed archives are also kept within the
 download directory after GRASS import.
 <p>
@@ -53,34 +53,38 @@ Specify a name for the composite raster map that will be created by the module
 <p>
 <h4>Resampling method to use:</h4>
 "default" will use a hardcoded resampling method selected for the USGS dataset.<p>
-NED default is 'bilinear'</br>
-NLCD default is 'nearest'</br>
-</br>
+NED default is 'bilinear'<br>
+NLCD default is 'nearest'<br>
+<br>
 
 <h2>EXAMPLE</h2>
+Set example g.region:
+<div class="code"><pre>
+g.region n=36.2718518358333 s=35.2981481325 e=-78.1339815488889 w=-79.1294445127778
+</pre></div>
+<p>
+
 r.in.usgs example parameters:
 <div class="code"><pre>
-r.in.usgs product=ned ned_dataset=1/3 arc-second output_directory=* output_name=*
-</div></pre>
+r.in.usgs product=ned ned_dataset=1/3 arc-second output_directory=/tmp output_name=ned_output
+</pre></div>
 <p>
 
 Mapset g.region output is automatically detected:
 <div class="code"><pre>
-g.region -p                                                                     
-projection: 3 (Latitude-Longitude)
-zone:       0
-datum:      nad83
-ellipsoid:  grs80
-north:      36:16:18.666609N
-south:      35:17:53.333277N
-west:       79:07:46.000246W
-east:       78:08:02.333576W
-nsres:      0:00:00.333333
-ewres:      0:00:00.333333
-rows:       10516
-cols:       10751
-cells:      113057516
-</div></pre></br>
+g.region -pg                                                                    
+projection=3
+zone=0
+n=36.2718518358333
+s=35.2981481325
+w=-79.1294445127778
+e=-78.1339815488889
+nsres=9.25925925573731e-05
+ewres=9.25925926787154e-05
+rows=10516
+cols=10751
+cells=113057516
+</pre></div><br>
 
 Informational output:
 <div class="code"><pre>
@@ -95,38 +99,38 @@ USGS NED n37w079 1/3 arc-second 2013 1 x 1 degree IMG
 USGS NED n36w080 1/3 arc-second 2013 1 x 1 degree IMG
 USGS NED n37w080 1/3 arc-second 2013 1 x 1 degree IMG
 -------------------------
-</div></pre>
+</pre></div>
 <p>
 
 GRASS GIS Output:
 <div align="center" style="margin: 10px">
-<a href="https://raw.githubusercontent.com/zkwurst/GSoC2017-GRASS-GIS/master/Documentation/NED_multi_tile.png">
-<img src="https://raw.githubusercontent.com/zkwurst/GSoC2017-GRASS-GIS/master/Documentation/NED_multi_tile.png" width="400" height="400" alt="NED tiles with composite overlay" border="0">
+<a href="r_in_usgs_NED_multi_tile.png">
+<img src="r_in_usgs_NED_multi_tile.png" width="400" height="400" alt="NED tiles with composite overlay" border="0">
 </a><br>
-<i>Figure: Composite patch layer is created from original NED imagery</i>
+<i>Figure: Individual tiles are automatically imported and reprojected into GRASS GIS</i>
 </div>
-<p></br>
+<p><br>
 
 <div align="center" style="margin: 10px">
-<a href="https://raw.githubusercontent.com/zkwurst/GSoC2017-GRASS-GIS/master/Documentation/NED_multi_tile_comp.png">
-<img src="https://raw.githubusercontent.com/zkwurst/GSoC2017-GRASS-GIS/master/Documentation/NED_multi_tile_comp.png" width="400" height="400" alt="NED tiles with composite overlay" border="0">
+<a href="r_in_usgs_NED_multi_tile_comp.png">
+<img src="r_in_usgs_NED_multi_tile_comp.png" width="400" height="400" alt="NED tiles with composite overlay" border="0">
 </a><br>
-<i>Figure: Composite patch layer is created from original NED imagery</i>
+<i>Figure: A composite patch layer matching the computational region is created from original NED imagery</i>
 </div>
-<p></br>
+<p><br>
 
 <div align="center" style="margin: 10px">
-<a href="https://raw.githubusercontent.com/zkwurst/GSoC2017-GRASS-GIS/master/Documentation/NED_comp.png">
-<img src="https://raw.githubusercontent.com/zkwurst/GSoC2017-GRASS-GIS/master/Documentation/NED_comp.png" width="400" height="400" alt="NED composite example" border="0">
+<a href="r_in_usgs_NED_comp.png">
+<img src="r_in_usgs_NED_comp.png" width="400" height="400" alt="NED composite example" border="0">
 </a><br>
 <i>Figure: Source imagery is removed, leaving a single patched tile for the GRASS GIS computational region</i>
 </div>
-<p></br>
+<p><br>
 
 <h2>REFERENCES</h2>
 <em>
-<a href="https://viewer.nationalmap.gov/help/documents/TNMAccessAPIDocumentation/TNMAccessAPIDocumentation.pdf">TNM Access API Guide</a></br>
-<a href="https://www.sciencebase.gov/catalog/item/4f70a58ce4b058caae3f8ddb">National Elevation Dataset</a></br>
+<a href="https://viewer.nationalmap.gov/help/documents/TNMAccessAPIDocumentation/TNMAccessAPIDocumentation.pdf">TNM Access API Guide</a><br>
+<a href="https://www.sciencebase.gov/catalog/item/4f70a58ce4b058caae3f8ddb">National Elevation Dataset</a><br>
 <a href="https://catalog.data.gov/dataset/national-land-cover-database-nlcd-land-cover-collection">National Land Cover Dataset</a>
 </em>
 
@@ -139,5 +143,5 @@ GRASS GIS Output:
 </em>
 
 <h2>AUTHOR</h2>
-Zechariah Krautwurst, 2017 MGIST Candidate, North Carolina State University</br>
-(Google Summer of Code 2017, mentors: Anna Petrasova, Vaclav Petras)</br>
+Zechariah Krautwurst, 2017 MGIST Candidate, North Carolina State University<br>
+(Google Summer of Code 2017, mentors: Anna Petrasova, Vaclav Petras)<br>

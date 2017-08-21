@@ -124,7 +124,7 @@
 #%end
 
 #%rules
-#% required: output, -i
+#% required: output_name, -i
 #%end
 
 import sys
@@ -252,7 +252,7 @@ def main():
         gui_subset = None
     
     # Assigning further parameters from GUI
-    gui_output_layer = options['output']
+    gui_output_layer = options['output_name']
     gui_resampling_method = options['resampling_method']
     gui_i_flag = flags['i']
     gui_k_flag = flags['k']
