@@ -3,7 +3,7 @@
 
 #MODULE:     r.in.usgs
 #
-#AUTHOR:    Zechariah Krautwurst
+#AUTHOR:     Zechariah Krautwurst
 #
 #MENTORS:    Anna Petrasova
 #            Vaclav Petras
@@ -35,7 +35,7 @@
 #%option
 #% key: product
 #% required: yes
-#% options: ned, nlcd, naip, ustopo
+#% options: ned, nlcd
 #% label: USGS data product
 #% description: Available USGS data products to query
 #% guisection: USGS Data Selection
@@ -54,42 +54,46 @@
 #%option
 #% key: nlcd_dataset
 #% required: no
-#% options: National Land Cover Database (NLCD) - 2001, National Land Cover Database (NLCD) - 2006, National Land Cover Database (NLCD) - 2011
-#% answer: National Land Cover Database (NLCD) - 2011
+#% options: nlcd2001, nlcd2006, nlcd2011
+#% answer: nlcd2011
 #% label: NLCD dataset
 #% description: Available NLCD datasets to query
+#% descriptions: nlcd2001;National Land Cover Dataset - 2001;nlcd2006;National Land Cover Dataset - 2006;nlcd2011;National Land Cover Dataset - 2011
 #% guisection: NLCD
 #%end
 
 #%option
 #% key: nlcd_subset
 #% required: no
-#% options: Percent Developed Imperviousness, Percent Tree Canopy, Land Cover
-#% answer: Land Cover
+#% options: land_cover, impervious, canopy
+#% answer: land_cover
 #% label: NLCD subset
 #% description: Available NLCD subsets to query
+#% descriptions: impervious;Percent Developed Imperviousness;canopy;Percent Tree Canopy;land_cover;Land Cover
 #% guisection: NLCD
 #%end
 
-#%option
-#% key: naip_dataset
-#% required: no
-#% options: Imagery - 1 meter (NAIP)
-#% answer: Imagery - 1 meter (NAIP)
-#% label: NAIP dataset
-#% description: Available NAIP datasets to query
-#% guisection: NAIP
-#%end
+## Currently unavailable ##
+##%option
+##% key: naip_dataset
+##% required: no
+##% options: Imagery - 1 meter (NAIP)
+##% answer: Imagery - 1 meter (NAIP)
+##% label: NAIP dataset
+##% description: Available NAIP datasets to query
+##% guisection: NAIP
+##%end
 
-#%option
-#% key: ustopo_dataset
-#% required: no
-#% options: US Topo Current, US Topo Historical
-#% answer: US Topo Current
-#% label: US Topo Data
-#% description: Available UStopo datasets to query
-#% guisection: USTopo
-#%end
+## Currently unavailable ##
+##%option
+##% key: ustopo_dataset
+##% required: no
+##% options: US Topo Current, US Topo Historical
+##% answer: US Topo Current
+##% label: US Topo Data
+##% description: Available UStopo datasets to query
+##% guisection: USTopo
+##%end
 
 #%option G_OPT_M_DIR
 #% key: output_directory
@@ -232,24 +236,37 @@ def main():
     product_interpolation = nav_string['interpolation']
     product_url_split = nav_string['url_split']
     product_extent = nav_string['extent']
+    gui_subset = None
 
     # Parameter assignments for each dataset
     if gui_product == 'ned':
         gui_dataset = options['ned_dataset']
         product_tag = product + " " + gui_dataset
-        gui_subset = None
+
     if gui_product == 'nlcd':
         gui_dataset = options['nlcd_dataset']
+        if options['nlcd_dataset'] == 'nlcd2001':
+            gui_dataset = 'National Land Cover Database (NLCD) - 2001'
+        if options['nlcd_dataset'] == 'nlcd2006':
+            gui_dataset = 'National Land Cover Database (NLCD) - 2006'
+        if options['nlcd_dataset'] == 'nlcd2011':
+            gui_dataset = 'National Land Cover Database (NLCD) - 2011'
+        
+        if options['nlcd_subset'] == 'land_cover':
+            gui_subset = 'Land Cover'
+        if options['nlcd_subset'] == 'impervious':
+            gui_subset = 'Percent Developed Imperviousness'
+        if options['nlcd_subset'] == 'canopy':
+            gui_subset = 'Percent Tree Canopy'
         product_tag = gui_dataset
-        gui_subset = options['nlcd_subset']
+
     if gui_product == 'naip':
         gui_dataset = options['naip_dataset']
         product_tag = nav_string['product']
-        gui_subset = None
+
     if gui_product == 'ustopo':
         gui_dataset = options['ustopo_dataset']
         product_tag = nav_string['product']
-        gui_subset = None
     
     # Assigning further parameters from GUI
     gui_output_layer = options['output_name']
@@ -315,12 +332,16 @@ def main():
     # Parse return JSON object from API query
     try:
         return_JSON = json.load(TNM_API_GET)
+        if return_JSON['errors']:
+            TNM_API_error = return_JSON['errors']
+            api_error_msg = "TNM API Error - {0}".format(str(TNM_API_error))
+            gscript.fatal(api_error_msg)
+
     except:
         gscript.fatal("Unable to load USGS JSON object.")
     
     # Functions down_list() and exist_list() used to determine 
     # existing files and those that need to be downloaded.
-    
     def down_list():
         dwnld_url.append(TNM_file_URL)
         dwnld_size.append(TNM_file_size)
@@ -408,7 +429,7 @@ def main():
         
     # return fatal error if API query returns no results for GUI input
     elif tile_API_count == 0:
-        gscript.fatal("Zero tiles available for given input parameters.")
+        gscript.fatal("TNM API ERROR or Zero tiles available for given input parameters.")
 
     # number of files to be downloaded 
     file_download_count = len(dwnld_url)
