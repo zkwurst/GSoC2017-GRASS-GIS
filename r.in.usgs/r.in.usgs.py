@@ -242,6 +242,12 @@ def main():
     if gui_product == 'ned':
         gui_dataset = options['ned_dataset']
         product_tag = product + " " + gui_dataset
+        if options['ned_dataset'] == '1 arc-second':
+            ned_data_abbrv = 'ned_1arc_'
+        if options['ned_dataset'] == '1/3 arc-second':
+            ned_data_abbrv = 'ned_13arc_'
+        if options['ned_dataset'] == '1/9 arc-second':
+            ned_data_abbrv = 'ned_19arc_'
 
     if gui_product == 'nlcd':
         gui_dataset = options['nlcd_dataset']
@@ -328,7 +334,9 @@ def main():
         TNM_API_GET = urllib2.urlopen(TNM_API_URL, timeout=12)
     except urllib2.URLError:
         gscript.fatal("USGS TNM API query has timed out. Check network configuration. Please try again.")
-
+    except:
+        gscript.fatal("USGS TNM API query has timed out. Check network configuration. Please try again.")
+    
     # Parse return JSON object from API query
     try:
         return_JSON = json.load(TNM_API_GET)
@@ -382,9 +390,14 @@ def main():
             TNM_file_URL = str(f['downloadURL'])
             TNM_file_size = int(f['sizeInBytes'])
             TNM_file_name = TNM_file_URL.split(product_url_split)[-1]
-            local_file_path = os.path.join(work_dir, TNM_file_name)
-            local_zip_path = os.path.join(work_dir, TNM_file_name)
-            local_tile_path = os.path.join(work_dir, TNM_file_name)
+            if gui_product == 'ned':
+                local_file_path = os.path.join(work_dir, ned_data_abbrv + TNM_file_name)
+                local_zip_path = os.path.join(work_dir, ned_data_abbrv + TNM_file_name)
+                local_tile_path = os.path.join(work_dir, ned_data_abbrv + TNM_file_name)
+            else:
+                local_file_path = os.path.join(work_dir, TNM_file_name)
+                local_zip_path = os.path.join(work_dir, TNM_file_name)
+                local_tile_path = os.path.join(work_dir, TNM_file_name)
             file_exists = os.path.exists(local_file_path)
             file_complete = None
             # if file exists, but is incomplete, remove file and redownload
@@ -426,11 +439,11 @@ def main():
                         tiles_needed_count += 1
                         down_list()
                         continue
-        
+    
     # return fatal error if API query returns no results for GUI input
     elif tile_API_count == 0:
         gscript.fatal("TNM API ERROR or Zero tiles available for given input parameters.")
-
+    
     # number of files to be downloaded 
     file_download_count = len(dwnld_url)
 
@@ -475,6 +488,12 @@ def main():
     # Formatted return for 'i' flag
     if file_download_count <= 0:
         data_info = "\n\nUSGS file(s) to download: NONE"
+        if gui_product == 'nlcd':
+            if tile_API_count != file_download_count:
+                if tiles_needed_count == 0:
+                    nlcd_unavailable = "NLCD {0} data unavailable for input parameters".format(gui_subset)
+                    gscript.fatal(nlcd_unavailable)
+        
     else:
         data_info = (
                      "USGS file(s) to download:",
@@ -510,9 +529,13 @@ def main():
     # Download files
     for url in dwnld_url:
         # create file name by splitting name from returned url
-        file_name = url.split(product_url_split)[-1]
         # add file name to local download directory
-        local_file_path = os.path.join(work_dir, file_name)
+        if gui_product == 'ned':
+            file_name = ned_data_abbrv + url.split(product_url_split)[-1]
+            local_file_path = os.path.join(work_dir, file_name)
+        else:
+            file_name = url.split(product_url_split)[-1]
+            local_file_path = os.path.join(work_dir, file_name)
         try:
             # download files in chunks rather than write complete files to memory
             dwnld_req = urllib2.urlopen(url, timeout=12)
